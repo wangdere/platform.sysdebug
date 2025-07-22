@@ -216,8 +216,9 @@ def add_tag(sighting_id, addTag):
         response = requests.put(url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers, json=data)
         
         if response.status_code == 200:
-            print(data)
+            print(response)
         else:
+            print(response)
             print("Failed to update data")
             exit()
 
@@ -310,7 +311,55 @@ def updateSuspectAreaIngredient(sighting_id, args):
         return
     
 
+def updateField_Parse(field_list):
+    update_dict = {
+        "tenant": "server_platf",
+        "subject": "bug",
+        "fieldValues": [
+
+        ]
+    }
+
+    blocked_keys = {"suspect_area", "ingredient"}
+
+    if field_list:
+        for item in field_list:
+            if '=' in item:
+                key, value = item.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+                if key in blocked_keys:
+                    print(f"❌ Field '{key}' cannot be updated using --updateField.")
+                else:
+                    update_dict["fieldValues"].append({ key : value})
+            else:
+                print(f"⚠️ Invalid format (should be key=value): {item}")
+    else:
+        print(f"⚠️ No Field to update")
+    # json_body = json.dumps(update_dict)
+    return   update_dict
         
+def updateField(sighting_id,  args ):
+    # Step 1: Get the id info
+    headers = {
+        'Content-type': 'application/json',
+         'Accept' :  'application/json'    
+     }
+    
+    url = f'https://hsdes-api.intel.com/rest/article/{sighting_id}?fetch=false&debug=false'
+
+    data = updateField_Parse(args.updateField)
+    print(data)
+    response = requests.put(url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers, json=data) 
+    if response.status_code == 200:
+        if args.updateField:
+            print(f'Sighting {sighting_id}  updated: {data["fieldValues"]}')
+    else:
+        print(response)
+        print("Failed to update data")
+        return
+ 
+
 
 
 
@@ -333,6 +382,8 @@ def main():
     ]
     parser.add_argument("--updateSuspectArea", choices=list_suspect_area, help='Choose one of predefined areas')
     parser.add_argument("--updateIngredient", help='Choose one of predefined areas')
+    parser.add_argument("--updateField",nargs="*" , help='Choose one of predefined areas')
+    
     # 其他参数可以在这里添加
     # parser.add_argument("--updateRelease", help="Release to update")
     # parser.add_argument("--updateReleaseAffected", help="Release affected to update")
@@ -352,18 +403,18 @@ def main():
 
     if args.addTag:
         print('To run the function of addTag')
-        sighting_id = args.id 
-        add_tag(sighting_id, args.addTag)
+        for sighting_id in  args.id:
+            add_tag(sighting_id, args.addTag)
     
     if args.listTag:
         print('To list the tag')
-        sighting_id = args.id 
-        list_tag(sighting_id, args.listTag)
+        for sighting_id in  args.id:
+            list_tag(sighting_id, args.listTag)
         
     if args.removeTag:
         print('To remove tag'+ ' ' + args.removeTag)
-        sighting_id = args.id 
-        remove_tag(sighting_id, args.removeTag)
+        for sighting_id in  args.id:
+            remove_tag(sighting_id, args.removeTag)
 
     if args.showField:
         print("To show the fields")
@@ -394,6 +445,13 @@ def main():
             for sighting_id in args.id :
                 updateSuspectAreaIngredient(sighting_id,  args )
 
+    if args.updateField:
+        if not len(args.id):
+            print("❌ Please provide at least one ID --id.Empty values are not allowed. Can't perfrom: " + "update suspect area" )    
+        else:
+            print("To update the fileds\n")
+            for sighting_id in  args.id:
+                updateField(sighting_id,  args )
 
     # 其他参数的处理逻辑可以在这里添加
     # if args.updateRelease:
