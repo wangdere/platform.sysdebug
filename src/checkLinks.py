@@ -67,7 +67,7 @@ def  ShowWworkflow(sighting_id):
     #print the important sighting paramter
     print(f"{sighting_id}: suspct_area {str(self_suspect_area) if self_suspect_area is not None else ''}; ingrdient {str(self_ingredient) if self_ingredient is not None else ''}; status {str(self_status) if self_status is not None else ''}")
 
-        # 打印表格
+        # 打印links表格
     print('Check '+ sighting_id+' links' )
     print(tabulate(table, headers=tbl_header, tablefmt="fancy_grid"))
     print('Check '+ sighting_id+'\'s sets' )
@@ -91,11 +91,12 @@ def  ShowWworkflow(sighting_id):
     # 打印表格
     print(tabulate(rows, headers=tbl_headers, tablefmt='grid'))
     '''
-
+    '''
     # === 获取终端宽度
     terminal_width = shutil.get_terminal_size().columns
 
     # === 设置最大列宽度（平均分配，略去边框宽度）
+
     if setsJson['data']:
         tbl_headers = list(setsJson['data'][0].keys())
     else:
@@ -103,16 +104,17 @@ def  ShowWworkflow(sighting_id):
         exit()  # 或者 exit()，根据你的程序结构决定
     
     max_col_width = min(18, terminal_width // len(headers) - 4)
-
-
+    '''
+    tbl_header = ["Owner", "From_id", "From_tenant", "Id", "Title", "Status","Tenant","Subject"]
     # === 构造缩短内容的表格数据
     rows = []
     for entry in setsJson['data']:
-        row = [shorten(entry.get(h), 50 if h == 'title' else max_col_width) for h in tbl_headers]
+        #row = [shorten(entry.get(h), 50 if h == 'title' else max_col_width) for h in tbl_headers]
+        row = [entry.get("owner"), entry.get("from_id"),entry.get("from_tenant"),entry.get("id"), shorten(entry.get("title"), 50),entry.get("status"),entry.get("tenant"),entry.get("subject")]
         rows.append(row)
 
     # === 打印表格
-    print(tabulate(rows, headers=tbl_headers, tablefmt='grid'))
+    print(tabulate(rows, headers=tbl_header, tablefmt='grid'))
 
 
 
