@@ -4,7 +4,26 @@ import json
 import pandas as pd
 import argparse
 import checkLinks as cL
+from  hsd_connection  import HSDConnection
+from checker import base_checker
+import pkgutil
+import importlib
+from pathlib import Path
 
+def load_checkers(selected_checker_names=None):
+    checkers = []
+    for loader, name, is_pkg in pkgutil.iter_modules(['checker']):
+        if name == "base_checker": continue
+
+        if selected_checker_names and name not in selected_checker_names:
+            continue  # 只加载指定的 checker
+
+        module = importlib.import_module(f"checker.{name}")
+        for attr in dir(module):
+            cls = getattr(module, attr)
+            if isinstance(cls, type) and issubclass(cls, base_checker.BaseChecker) and cls != base_checker.BaseChecker:
+                checkers.append(cls())
+    return checkers
 
 def checkPlatgSightingMatchingBugeco(sighting_id, sets_data, parm_Json):
     
@@ -44,6 +63,7 @@ def checkPlatgSightingMatchingBugeco(sighting_id, sets_data, parm_Json):
     #Then to check if sighting_central in the sets or not. 
 
 
+'''
 def checkSighitngsWithQuery(query_id, type="silicon"):
     #using query to get the list
     #for each sighing in the list, get the sets
@@ -128,22 +148,13 @@ def checkSighitngsWithQuery(query_id, type="silicon"):
                     found_bugeco = True
                     break  # 如果你只想要找到一个就够了，可以加这个
             print()
-            '''
-            if not found_bugeco:
-                print("✅ No bugEco found in sets.")
-            '''
+
         else:
           #then check if any bugeco in the non-silicon sighting.
            checkPlatgSightingMatchingBugeco(sighting_id,  sets_data, parm_Json )
-
+'''
             
 
-
-def show_fields_generateReqURL():
-    print('hello world')
-
-def show_fields_generateReqURLAndData():
-    print('hello world')
 
 def show_fields_generateFullFieldName(field):
     prefix = "server_platf.bug."
@@ -157,26 +168,17 @@ def show_fields_generateFullFieldName(field):
     return full_key
 
 def showField(sighting_id, user_fields): 
-   # Step 1: Get the id info
-    headers = {'Content-type': 'application/json'}
-    url = 'https://hsdes-api.intel.com/rest/article/'+sighting_id+'?fetch=false&debug=false'
-#    response = requests.get(url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers)
-    response = requests.get(url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers)
-    if response.status_code == 200:
-        resData = response.json()
-        #tags = resData['data'][0]['tag']
-    else:
-        print("Failed to fetch data")
-        exit()
+    o_hsdconn = HSDConnection(sighting_id)
+    o_hsdconn.fetch_data(sighting_id=sighting_id,sighting_field_list=user_fields )
 
-    for entry in resData.get("data", []):
-        for field in user_fields:
-            full_key = show_fields_generateFullFieldName(field)
-            value =  entry.get(full_key)
-            if not value:
-                value = "N.A"
-            print(f'sighting {sighting_id} field {field}: ' + value)
-
+    resData = o_hsdconn.get_sighting_json(sighting_id)
+    # 合并所有字典
+    merged = {}
+    for d in resData['data']:
+        merged.update(d)
+    # 打印每个 key 和 value
+    for k, v in merged.items():
+        print(f"{k}: {v}")
                 
 
 def add_tag(sighting_id, addTag): 
@@ -360,18 +362,25 @@ def updateField(sighting_id,  args ):
         return
  
 
-
+def create_sighting_list(id_list, quryId ):
+    o_hsdconn = HSDConnection(quryId)
+    o_hsdconn.fetch_data(query_id=quryId)
+    id_list_from_query = o_hsdconn.get_query_id_list(quryId)
+    return  (id_list or []) + id_list_from_query
+    
 
 
 def main():
     parser = argparse.ArgumentParser(description="HSD Sighting Operations")
     parser.add_argument("--id", nargs="+",  help="Sighting ID")
+    parser.add_argument("--queryId", required=False,  help="query  ID") # only accept just 1 query ID
+    
     parser.add_argument("--addTag", help="Tag to add")
     parser.add_argument("--removeTag", help="Tag to remove")
     parser.add_argument("--listTag", action='store_true', help="List the tags of the id")
-    parser.add_argument("--showField", nargs='+', help="show the sighting's field: suspect_area, ingredient, status, status_reason, forum")
+    parser.add_argument("--showField", "--sf", nargs='+', help="show the sighting's field: suspect_area, ingredient, status, status_reason, forum")
     parser.add_argument("--showLinks", action='store_true', help="show the sighting's links and sets")
-    parser.add_argument("--traceByQueryId", nargs='+',help='check the sanity of a given query for the suspect_area/Ingredient')
+#    parser.add_argument("--traceByQueryId", nargs='+',help='check the sanity of a given query for the suspect_area/Ingredient')
     
     #update the ingredient will make more sense. 
     list_suspect_area = [
@@ -382,7 +391,9 @@ def main():
     ]
     parser.add_argument("--updateSuspectArea", choices=list_suspect_area, help='Choose one of predefined areas')
     parser.add_argument("--updateIngredient", help='Choose one of predefined areas')
-    parser.add_argument("--updateField",nargs="*" , help='Choose one of predefined areas')
+    parser.add_argument("--updateField", "--uf", nargs="*" , help='Choose one of predefined areas')
+    parser.add_argument("--check", "--ck", nargs="*" , help='to run the checkers')
+    
     
     # 其他参数可以在这里添加
     # parser.add_argument("--updateRelease", help="Release to update")
@@ -391,10 +402,25 @@ def main():
 
     args = parser.parse_args()
 
-    if (not args.id and not args.traceByQueryId ):
+    if (not args.id and not args.queryId ):
         exit()
 
     print('start')
+
+    sighiting_list = create_sighting_list(args.id, args.queryId )
+    if args.check:
+        for sighting_id in  sighiting_list:
+            o_hsdconn = HSDConnection(sighting_id)
+            o_hsdconn.fetch_data(sighting_id=sighting_id )
+            for checker in load_checkers(args.check):
+                passed, msg = checker.run(o_hsdconn)
+                status = "✅" if passed else "⚠️"
+                print(f"{status} {msg}")
+
+
+
+
+
     if args.addTag or args.listTag or args.removeTag :
         if not len(args.id) or len(args.id) > 1:
              print("❌ Please provide exactly one --id. Multiple or empty values are not allowed.")
@@ -428,7 +454,7 @@ def main():
             print("To show the links")
             for sighting_id in args.id:
                 cL.ShowWworkflow(sighting_id)
-    
+    '''
     if args.traceByQueryId:
         if not len(args.traceByQueryId) or  len(args.traceByQueryId) > 1:
             print("❌ Please provide exactly one --id. Multi and Empty values are not allowed. Can't perfrom: " + "Check Sightings with Query" )
@@ -436,7 +462,7 @@ def main():
             print("To show the links")
             queryId =  args.traceByQueryId[0]
             checkSighitngsWithQuery(queryId)
-   
+   '''
     if args.updateSuspectArea or args.updateIngredient:
         if not len(args.id):
             print("❌ Please provide at least one ID --id.Empty values are not allowed. Can't perfrom: " + "update suspect area" )    
