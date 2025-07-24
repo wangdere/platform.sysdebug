@@ -13,9 +13,6 @@ def shorten(text, max_len):
     text = str(text)
     return text if len(text) <= max_len else text[:max_len - 3] + '...'
 
-
-
-
 def  ShowWworkflow(sighting_id):
     #print("Hello World")
     #Get the link list of the sighting
