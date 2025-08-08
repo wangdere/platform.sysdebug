@@ -1,0 +1,15 @@
+subsystems:
+  - name: RAS
+    send_email: yes
+    to: ["dongmin.wang@intel.com"]
+    cc: []
+    query_id: 15018175309
+    rules: all
+
+  - name: Seamless
+    send_email: no
+    to: ["dongmin.wang@intel.com"]
+    cc: []
+    query_id: 15018175335
+    rules: 
+      - rule_owner_check
