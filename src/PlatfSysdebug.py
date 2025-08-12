@@ -3,12 +3,42 @@ from requests_kerberos import HTTPKerberosAuth
 import json
 import pandas as pd
 import argparse
-import checkLinks as cL
 from  hsd_connection  import HSDConnection
 from checker import base_checker
+from reporter import base_reporter
 import pkgutil
 import importlib
 from pathlib import Path
+import email_notifier as en
+from email_notifier import EmailNotifier
+import sighting_util as su
+import yaml
+
+
+
+def load_reporters(path="reporter_config.yaml"):
+    reporters = []
+
+    with open(path, "r") as f:
+        cfg = yaml.safe_load(f)
+    reporters_cfg = cfg.get("reporters", {})
+    selected_names = [name for name, enabled in reporters_cfg.items() if enabled]
+    for loader, name, is_pkg in pkgutil.iter_modules(['reporter']):
+        if name == "base_reporter": continue #skip base report which is a virtual class
+
+        if selected_names and name not in selected_names:
+            continue  # 只加载指定的 checker
+
+        module = importlib.import_module(f"reporter.{name}")
+        for attr in dir(module):
+            cls = getattr(module, attr)
+            if isinstance(cls, type) and issubclass(cls, base_reporter.BaseReporter) and cls != base_reporter.BaseReporter:
+                reporters.append(cls())
+    return reporters   
+
+
+
+
 
 def load_checkers(selected_checker_names=None):
     checkers = []
@@ -25,6 +55,7 @@ def load_checkers(selected_checker_names=None):
                 checkers.append(cls())
     return checkers
 
+'''
 def checkPlatgSightingMatchingBugeco(sighting_id, sets_data, parm_Json):
     
     ingredient = parm_Json.get("data", [])[0].get(show_fields_generateFullFieldName("ingredient"))
@@ -61,101 +92,10 @@ def checkPlatgSightingMatchingBugeco(sighting_id, sets_data, parm_Json):
     # how to judget the suspect area and bugeco has the same code? 
 
     #Then to check if sighting_central in the sets or not. 
-
+            
+'''
 
 '''
-def checkSighitngsWithQuery(query_id, type="silicon"):
-    #using query to get the list
-    #for each sighing in the list, get the sets
-    #if ingredient is null or not containing the silicon, reporting warning
-    #if ingredient contains' silicon, if set is null or doesn't have bugEco , reporting warining
-    #    continue check: -- It it has transferred ID, check if transferred ID, reporting need to check the transferred id.
-    #if ingredient contain "pcode", 'oCode", the bugEco component should have those. 
-    headers = {'Content-type': 'application/json'}
-    url = 'https://hsdes-api.intel.com/rest/query/' + query_id +'?include_text_fields=Y&start_at=1&max_results=10000&fields=id%2Ctitle'
-    response = requests.get(url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers)
-
-    if response.status_code == 200:
-        data = response.json()
-        id_list = [item['id'] for item in data['data']]
-    else:
-        print("Failed to fetch data")
-        exit()
-    print(id_list)
-    
-
-    expected_fields_in_sets = [
-    'id', 'subject', 'tenant', 'title', 'status',
-    'owner', 'from_id', 'from_tenant', 'component', 'component_affected'
-    ]
-
-    fields_url_in_sets= ','.join(expected_fields_in_sets)
-    #expected_fields_in_sets = 'fields= id%2Csubject%2Ctenant%2Ctitle%2Cstatus%2Cowner%2Cfrom_id%2Cfrom_tenant%2Ccomponent%2Ccomponent_affected'
-   
-    for sighting_id in id_list:
-        try:
-            sets_url = f'https://hsdes-api.intel.com/rest/article/{sighting_id}/sets?fields={fields_url_in_sets}'
-            parm_url = f'https://hsdes-api.intel.com/rest/article/{sighting_id}?fetch=false&debug=false'
-
-            sets_res =  requests.get(sets_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers)
-            if sets_res.status_code == 200:
-                sets_Json = sets_res.json()
-                #print(linksData)
-            else: 
-                print(sets_Json)
-                print("Can't retrieve Sets data of " + sighting_id +" continue next one")
-                continue
-
-            parm_res = requests.get(parm_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers)           
-            if parm_res.status_code == 200:
-                    parm_Json = parm_res.json()
-            else:
-                print(parm_Json)
-                print("can't retrieve sighitng" + sighting_id + " data, continue next one")
-                continue
-        except requests.RequestException as e:
-            print(f"\n❌ 网络请求错误 for ID {sighting_id}: {e}")
-            continue  # 跳过当前这个 ID，继续下一个
-        except ValueError as e:
-            print(f"\n❌ JSON 解码失败 for ID {sighting_id}: {e}")
-            continue
-
-        ingredient = parm_Json.get("data", [])[0].get(show_fields_generateFullFieldName("ingredient"))  
-        if not ingredient:
-            ingredient = "N.A"
-        suspect_area =  parm_Json.get("data", [])[0].get(show_fields_generateFullFieldName("suspect_area"))  
-        if not suspect_area: 
-            suspect_area = "N.A"
-
-        title = parm_Json.get("data", [])[0].get(show_fields_generateFullFieldName("title"))  
-        sets_data = sets_Json.get("data", [])
-        
-        if ("silicon" not in str(ingredient).lower()) and ("silicon" not in str(suspect_area).lower()):
-            print(f"⚠️ Info: Neither ingredient nor suspect_area contains 'silicon' {sighting_id}: {title}")
-            print(f"⚠️ Info: ingredient:{ingredient}  suspect_area:{suspect_area}")
-
-   
-            #then check if any bugeco in the non-silicon sighting.
-            
-            found_bugeco = False
-
-            for item in sets_data:
-                subject = item.get("subject", "").lower()
-                #from_tenant = item.get("from_tenant", "").lower()
-
-                if "bugeco" in subject :
-                    print(f"⚠️ WARNING: Found bugEco in subject  for non_silicon ID" + sighting_id + " ---->" + item.get('id'))
-                    found_bugeco = True
-                    break  # 如果你只想要找到一个就够了，可以加这个
-            print()
-
-        else:
-          #then check if any bugeco in the non-silicon sighting.
-           checkPlatgSightingMatchingBugeco(sighting_id,  sets_data, parm_Json )
-'''
-            
-
-
 def show_fields_generateFullFieldName(field):
     prefix = "server_platf.bug."
     if field in ("suspect_area", "ingredient","days_open",  "sighting_submitted_date", "root_caused_date", "transferred_date", "regression","days_sighting_submitted",
@@ -166,19 +106,8 @@ def show_fields_generateFullFieldName(field):
     else:
         full_key = field   
     return full_key
+'''
 
-def showField(sighting_id, user_fields): 
-    o_hsdconn = HSDConnection(sighting_id)
-    o_hsdconn.fetch_data(sighting_id=sighting_id,sighting_field_list=user_fields )
-
-    resData = o_hsdconn.get_sighting_json(sighting_id)
-    # 合并所有字典
-    merged = {}
-    for d in resData['data']:
-        merged.update(d)
-    # 打印每个 key 和 value
-    for k, v in merged.items():
-        print(f"{k}: {v}")
                 
 
 def add_tag(sighting_id, addTag): 
@@ -362,13 +291,29 @@ def updateField(sighting_id,  args ):
         return
  
 
-def create_sighting_list(id_list, quryId ):
-    o_hsdconn = HSDConnection(quryId)
-    o_hsdconn.fetch_data(query_id=quryId)
-    id_list_from_query = o_hsdconn.get_query_id_list(quryId)
-    return  (id_list or []) + id_list_from_query
-    
+def create_sighting_list(id_list, queryId ):
 
+    id_list_from_query = []
+    if queryId:
+        o_hsdconn = HSDConnection(queryId)
+        o_hsdconn.fetch_data(query_id=queryId)
+        id_list_from_query = o_hsdconn.get_query_id_list(queryId)
+
+    return  (id_list or []) + (id_list_from_query )
+
+
+
+
+def check_rule_load_config(path="rule_check_config.yaml"):
+    with open(path, "r") as f:
+        config = yaml.safe_load(f)
+    return config["subsystems"]
+
+def get_current_week_number():
+    # 取当前日期，计算“公司周”，这里假设周日为周起始，使用isocalendar周数再调正
+    today = datetime.date.today()
+    # 简单用isocalendar周数，示范用，实际可按公司规则修正
+    return today.isocalendar()[1]
 
 def main():
     parser = argparse.ArgumentParser(description="HSD Sighting Operations")
@@ -376,24 +321,29 @@ def main():
     parser.add_argument("--queryId", required=False,  help="query  ID") # only accept just 1 query ID
     
     parser.add_argument("--addTag", help="Tag to add")
-    parser.add_argument("--removeTag", help="Tag to remove")
+    parser.add_argument("--removeTag",metavar="TAG",  help="Tag to remove")
     parser.add_argument("--listTag", action='store_true', help="List the tags of the id")
-    parser.add_argument("--showField", "--sf", nargs='+', help="show the sighting's field: suspect_area, ingredient, status, status_reason, forum")
+    parser.add_argument("--showField", "--sf", metavar="field" , nargs='+', help="show the sighting's field: suspect_area, ingredient, status, status_reason, forum")
     parser.add_argument("--showLinks", action='store_true', help="show the sighting's links and sets")
-#    parser.add_argument("--traceByQueryId", nargs='+',help='check the sanity of a given query for the suspect_area/Ingredient')
+
     
     #update the ingredient will make more sense. 
     list_suspect_area = [
-    "silicon", "system_boards", "hardware.component.dram","io_device", "bios","bmc_fw","cpld_fw", "pfr"
-    "operating_system",  "platform.simics", "DDR5 DIMM", "documentation", "script", "tool", "test_content"
+                        "silicon", "system_boards", "hardware.component.dram",
+                        "io_device", "bios","bmc_fw","cpld_fw", 
+                        "pfr", "operating_system",  "platform.simics", "DDR5 DIMM", 
+                        "documentation", "script", "tool", "test_content", "unknown"
 
-    # 你可以继续加更多
-    ]
-    parser.add_argument("--updateSuspectArea", choices=list_suspect_area, help='Choose one of predefined areas')
+                                # 你可以继续加更多
+                        ]
+    parser.add_argument("--updateSuspectArea", choices=list_suspect_area, metavar="update suspect_area", help='Choose one of predefined areas: ' + ', '.join(list_suspect_area) )
     parser.add_argument("--updateIngredient", help='Choose one of predefined areas')
-    parser.add_argument("--updateField", "--uf", nargs="*" , help='Choose one of predefined areas')
-    parser.add_argument("--check", "--ck", nargs="*" , help='to run the checkers')
-    
+    parser.add_argument("--updateField", "--uf",nargs="*" , help='Choose one of predefined areas')
+    parser.add_argument("--checkRule", "--cr", metavar="rule",   nargs="*" ,  help='to run the checkers, default is to check owner, all--all rules; the rules are in checker folder')
+    parser.add_argument("--sendemail", "--se", action="store_true", help="If specified, send the email. Default is False.")
+    parser.add_argument("--toWiki", "--tw",  metavar="TOWIKI",  help="Put the comment id to wiki paage https://wiki.ith.intel.com/display/oksdebug/Informative+comments")
+    parser.add_argument("--report", "--rt", action="store_true",  help=" report the sighting summarzed info")
+    parser.add_argument("--week", "--wk", type=int, nargs="?", default=None, help="week number for report") 
     
     # 其他参数可以在这里添加
     # parser.add_argument("--updateRelease", help="Release to update")
@@ -402,23 +352,107 @@ def main():
 
     args = parser.parse_args()
 
-    if (not args.id and not args.queryId ):
-        exit()
+
+    import sys
+    import io
+
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
+
+    '''
+    command validity dependency:
+    id	queryId	addTag	listTag	removeTag	showField	showLinks	updateSuspectArea	
+                    id	     id	        id	        id	        id	            id	                
+    
+    updateIngredient	updateField	 checkrule	                        sendEmail	towiki     report
+    id	         id	           id    queryId,id(both null, then yaml)   checkrule	    id     queryId
+    '''
 
     print('start')
 
-    sighiting_list = create_sighting_list(args.id, args.queryId )
-    if args.check:
-        for sighting_id in  sighiting_list:
-            o_hsdconn = HSDConnection(sighting_id)
-            o_hsdconn.fetch_data(sighting_id=sighting_id )
-            for checker in load_checkers(args.check):
-                passed, msg = checker.run(o_hsdconn)
-                status = "✅" if passed else "⚠️"
-                print(f"{status} {msg}")
+    
+    if args.report:
+        if(not args.queryId):
+            print(f"⚠️ WARNING: query id for report" )
+            exit()
+
+        sighting_list = create_sighting_list([], args.queryId )
+        
+        week = args.week if args.week else get_current_week_number()    
+
+        reporters_to_run = load_reporters()
+        
+
+        if(args.sendemail):
+            o_en = EmailNotifier(f"platform sysdebug report")
+
+        for reporter in reporters_to_run:
 
 
+            tables = reporter.generate(sighting_list, week)
+            if args.sendemail:
 
+                o_en.put_description_to_email(reporter.get_description())
+
+                if isinstance(tables, dict):
+                    for name, table_data in tables.items():
+                        o_en.add_table(table_data, name)
+                else:
+                    print(f"Debug -- Table gerated wronngly")
+
+        if(args.sendemail):
+            o_en.display()
+
+
+    if args.checkRule != None:        
+        if args.id or  args.queryId :
+            sighting_list = create_sighting_list(args.id, args.queryId )
+            if not sighting_list: 
+                print(f"⚠️ WARNING: No valid sighting id can be found" )
+                exit()
+
+            requested_rules = args.checkRule
+            if requested_rules == []:
+                print(f"⚠️ WARNING: need to assign rules to check, or use 'all' " )
+                exit()
+            elif "all" in requested_rules :
+                rule_checkers  = load_checkers()
+            else:
+                rule_checkers = load_checkers(requested_rules)
+            su.sighting_check_sightings_based_on_rules(sighting_list, rule_checkers, args.sendemail)
+
+        else:
+            print(f"no id or queryid, so load from yaml config file")
+            subsystem_list = check_rule_load_config()
+
+            if not subsystem_list :
+                print(f"⚠️ WARNING: cant get valid config.yaml file" )
+                exit()
+
+            for subsystem in subsystem_list:
+                query_id = subsystem["query_id"]
+                name = subsystem.get("name", "Unknown")
+                send_email = subsystem.get("send_email", "no") == "yes"
+
+             
+                rules = subsystem.get("rules", "all")
+                if rules == "all":
+                    # 加载所有规则脚本（如：遍历 checker 文件夹）
+                    rule_checkers = load_checkers()
+                else:
+                    # 只加载指定规则名的脚本
+                    rule_checkers = load_checkers(rules)
+
+               #for this sub system to get the sighting list (from query id ) rules.                
+                sighting_list = create_sighting_list([], query_id )
+
+                print(f"\n🔍 Running rules for {name} (query_id: {query_id}, rules:{rule_checkers})")     
+
+                #start running for 1 sub system.
+                su.sighting_check_sightings_based_on_rules(sighting_list,rule_checkers, name, args.sendemail  )
+
+
+    if args.toWiki:
+        su.wiki_add_comment_id_to_page(args.toWiki)
 
 
     if args.addTag or args.listTag or args.removeTag :
@@ -445,7 +479,7 @@ def main():
     if args.showField:
         print("To show the fields")
         for sighting_id in  args.id:
-            showField(sighting_id, args.showField)
+            su.sighting_show_field(sighting_id, args.showField)
             
     if args.showLinks:
         if not len(args.id):
@@ -453,16 +487,8 @@ def main():
         else:
             print("To show the links")
             for sighting_id in args.id:
-                cL.ShowWworkflow(sighting_id)
-    '''
-    if args.traceByQueryId:
-        if not len(args.traceByQueryId) or  len(args.traceByQueryId) > 1:
-            print("❌ Please provide exactly one --id. Multi and Empty values are not allowed. Can't perfrom: " + "Check Sightings with Query" )
-        else:
-            print("To show the links")
-            queryId =  args.traceByQueryId[0]
-            checkSighitngsWithQuery(queryId)
-   '''
+                su.sighting_show_links_sets(sighting_id)
+
     if args.updateSuspectArea or args.updateIngredient:
         if not len(args.id):
             print("❌ Please provide at least one ID --id.Empty values are not allowed. Can't perfrom: " + "update suspect area" )    
@@ -487,6 +513,7 @@ def main():
     # if args.exposure:
     #     update_exposure(sighting_id, args.exposure)
 
+ 
 if __name__ == "__main__":
     main()
 

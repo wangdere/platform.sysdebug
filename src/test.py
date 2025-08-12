@@ -4,8 +4,8 @@ import urllib3
 import sighting_util as su
 
 #su.wiki_get_page_data()
-su.wiki_add_comment_id_to_page('https://hsdes.intel.com/appstore/article_legacy/#/14022517525' , "14612563026")
-
+su.wiki_add_comment_id_to_page("1563621733")
+#su.wiki_add_comment_id_to_page("14612563026")
 '''
 {
     "id": "4260912289",
