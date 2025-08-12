@@ -1,6 +1,7 @@
 
 import requests
 from requests_kerberos import HTTPKerberosAuth
+import urllib3
 import json
 import shutil
 #import PlatfSysdebug as pfsd
@@ -22,12 +23,13 @@ class HSDConnection:
             self.sighting_sets_json = None
             self.query_json = None
             self.query_id_list = None
+            self.sighting_history_json = None
             # 认证略去
 
     def get_full_field_name(self, field):
         prefix = "server_platf.bug."
         if field in ("suspect_area", "ingredient","days_open",  "sighting_submitted_date", "root_caused_date", "transferred_date", "regression","days_sighting_submitted",
-                    "days_lastupdate", "days_to_root_caused","days_sighting_submitted", "transferred_id", "root_cause_detail"):
+                    "days_lastupdate", "days_to_root_caused","days_sighting_submitted", "transferred_id", "root_cause_detail", "scrub_notes","ingredient","root_cause_detail"):
             full_key = prefix + field 
         elif field in ("exposure", "forum", "implemented_date"):
             full_key = prefix[len('server_platf.'):] + field 
@@ -35,10 +37,11 @@ class HSDConnection:
             full_key = field   
         return full_key
 
-    def fetch_data(self, *, sighting_id=None, query_id=None, sighting_field_list=None, query_field_list=None,  fetch_links=True, fetch_sets=True):
+    def fetch_data(self, *, sighting_id=None, query_id=None, sighting_field_list=None, query_field_list=None, \
+                    fetch_links=True, fetch_sets=True, fetch_comments=False, fetch_history = False):
         #if no these two ids, no action
         if not sighting_id and not query_id:
-            print("❌ Error: Either sighting_id or query_id must be provided.")
+            print(f"❌ Error: Either sighting_id {sighting_id} or queryid {query_id} must be provided.")
             return None
         
         self.sighting_id = sighting_id
@@ -61,7 +64,8 @@ class HSDConnection:
                 res_json = response.json()
                 #tags = resData['data'][0]['tag']
             else:
-                print("Failed to fetch data")
+                print(f"Failed to fetch {sighting_id} data with response code {response.status_code} ")
+                print(f"request URL: {self.sighting_url}")
                 return None
             
             if sighting_field_list:
@@ -81,7 +85,6 @@ class HSDConnection:
             else:
                 self.sighting_json = res_json
 
-
         #get query data
         if query_id:
             if(query_field_list):
@@ -95,7 +98,7 @@ class HSDConnection:
                 self.query_json = response.json()
                 self.query_id_list = [item['id'] for item in self.query_json['data']]
             else:
-                print("Failed to fetch data")
+                print("Failed to fetch query data")
                 return None
 
     
@@ -114,7 +117,7 @@ class HSDConnection:
 
         #fetch sets if needed
         if fetch_sets and sighting_id:
-            self.sighting_sets_url = f"{self.base_url}{sighting_id}/sets?fields=id%2Csubject%2Ctenant%2Ctitle%2Cstatus%2Cowner%2Cfrom_id%2Cfrom_tenant"
+            self.sighting_sets_url = f"{self.base_url}{sighting_id}/sets?fields=id%2Csubject%2Ctenant%2Ctitle%2Cstatus%2Cowner%2Cfrom_id%2Cfrom_tenant%2Ccomponent"
             response = requests.get(self.sighting_sets_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=self.headers)
             if response.status_code == 200:
                 self.sighting_sets_json = response.json()
@@ -123,8 +126,26 @@ class HSDConnection:
                 print("Failed to fetch sets")
                 return None
             
-    def get_sighting_json(self, sighting_id):
-        if sighting_id != self.sighting_id:
+
+        #fetch history if needed
+        if  fetch_history and sighting_id:
+            self.sighting_history_url = f"{self.base_url}{sighting_id}/history?fields=id%2Ctitle%2C%20bug.exposure%2C%20bug.forum%2C%20status%2C%20status_reason%2Cupdated_date%2Crev"
+            response = requests.get(self.sighting_history_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=self.headers)
+            if response.status_code == 200:
+                self.sighting_history_json = response.json()
+                #print(linksData)
+            else:
+                print("Failed to fetch sets")
+                return None
+
+
+
+        if fetch_comments and sighting_id:
+            return True
+
+
+    def get_sighting_json(self, sighting_id=None):
+        if not sighting_id and sighting_id != self.sighting_id:
             print("⚠️ Warning: The sighting_id provided does not match the one fetched.")
             return None
         if not self.sighting_json:
@@ -153,26 +174,38 @@ class HSDConnection:
             return None
         return self.query_id_list
         
-    def get_sighting_link_json(self, sighting_id):
-        if sighting_id != self.sighting_id:
-            print(f"⚠️ Warning: The data you fetch is not the same sighting id")
-            return None
+    def get_sighting_link_json(self, sighting_id=None):
+
         if not self.sighting_link_json:
             print(f"⚠️ Warning: Links not fetched yet. Please call fetch_data() first.")
             return None
         return self.sighting_link_json
 
-    def get_sighting_sets_json(self, sighting_id):
-        if sighting_id != self.sighting_id:
-            print(f"⚠️ Warning: The data you fetch is not the same sighting id")
-            return None
+    def get_sighting_sets_json(self, sighting_id=None):
+
         if not self.sighting_sets_json:
             print(f"⚠️ Warning: Sets not fetched yet. Please call fetch_data() first.")
             return None
         return self.sighting_sets_json
  
+    def get_sighting_field_value(self, field=None):
+        if not self.sighting_json:
+            print(f"⚠️ Warning: Sets not fetched yet. Please call fetch_data() first.")
+            return None
+        return self.sighting_json.get("data", [])[0].get(self.get_full_field_name(field)) or ""
+
     def update_data():
         print("hello")
+
+    def comment_get_id(self):
+        return self.sighting_id
+    
+    def comment_get_value_by_field(self, field_id='parent_id'):
+        return self.sighting_json.get('data', [])[0][field_id]
+
+
+    def get_sighting_history(self):
+        return  self.sighting_history_json
 
 def main():
     print("Hello")

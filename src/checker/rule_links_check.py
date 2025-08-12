@@ -1,89 +1,76 @@
 # checker/rule_note_check.py
 from .base_checker import BaseChecker
+import sighting_util as su
+from typing import Optional, List, Dict, Tuple
 
 class RuleLinksCheck(BaseChecker): 
-    
+     #exception list to handle the  complext cases
+    EXCEPTION_LIST = {
+        #GNR
+        "15015929631": "Errata in errata_central: '14022478850'",
+        "16019608404": "silicon bug but WA by Val Tool.",
+        # 你可以继续添加其他 ID 映射
+        #DMR
+        "14022517525": "It tracks OS issue,  with the other BIOS issue 14022825153 to as full fix, but BIOS remainsin the sets"
+    }
+ 
     def __init__(self):
         self.o_hsdconn= None
+        self.rule_name = "Check if suspect area/ingrdient comply with the sighting linkage and sets"
+  
+
+    def get_exception_info(self, sighting_id: str) -> Optional[str]:
+        return self.EXCEPTION_LIST.get(sighting_id)
 
     def run(self, o_hsdconn):
         self.o_hsdconn = o_hsdconn
         self.result = False
-        self.msg = None
-        '''
-        note = sighting.fields.get("private.note", "")
-        if not note:
-            return False, "Missing private.note"
-        '''
+
         sighting_id = o_hsdconn.sighting_id
-        self.check_bios_bugeco_sighting_central_validity(sighting_id , o_hsdconn.get_sighting_sets_json(sighting_id), o_hsdconn.get_sighting_json(sighting_id) )
+        title = self.o_hsdconn.get_sighting_field_value("title")
+        #first to check if this is reviewed in the exception.
+        exception_msg = self.get_exception_info(sighting_id)
+        if exception_msg:
+            self.msg =self.msg_short= f"✅ Info: Pass check with exception {exception_msg}:  {sighting_id}: {title}"
+            self.result = True 
+            return  self.result, self.msg 
 
-        return  self.result, self.msg 
-        
-
-
-    def check_bios_bugeco_sighting_central_validity(self,sighting_id, sets_data, parm_Json):
-
-        
-        ingredient = parm_Json.get("data", [])[0].get(self.o_hsdconn.get_full_field_name("ingredient"))
-        if not ingredient:
-            ingredient = "N.A"
-        suspect_area = parm_Json.get("data", [])[0].get(self.o_hsdconn.get_full_field_name("suspect_area"))
-        if not suspect_area:
-            suspect_area = "N.A"
-        
-        title = parm_Json.get("data", [])[0].get(self.o_hsdconn.get_full_field_name("title"))
-        print('Platform sighitng ID: ' + sighting_id + " Ingredient: " + ingredient +" suspect_area: " + suspect_area)
-
-        found_bugeco = False
-        found_sighting_cental = False
-        found_central_fw = False
-
-        for item in sets_data['data']:
-            subject = item.get("subject", "").lower()
-            tenant = item.get("tenant", "").lower()
-            if( "slicon" in suspect_area or "silicon" in ingredient ):
+        # 否则，执行正常检查逻辑
+        return self.check_bios_bugeco_sighting_central_validity()
     
-                if "bugeco" in subject:
-                    found_bugeco = True
-                    item.get("component", "").lower()
-                    print("found_bugeco for silion sighting:  " + item.get("id") + " with component" + item.get("component", ""))
 
-                if "sighting_central" in tenant:
-                    found_sighting_cental = True
-                    item.get("component", "").lower()
-                    print("found_sighting central for silicon sighting: " + item.get("id") + " with component" + item.get("component", ""))
+    def check_bios_bugeco_sighting_central_validity(self):
+        sighting_id = self.o_hsdconn.get_sighting_field_value("id")
+        title = self.o_hsdconn.get_sighting_field_value("title")
+        is_silicon_sighting = su.is_a_silicon_sighting(self.o_hsdconn)
+        is_bios_sighting = su.is_a_bios_sighting(self.o_hsdconn)
+        is_silicon_solution_in_sets =  su.is_silicon_solution_in_sets(self.o_hsdconn)
+        is_bios_solution_in_sets = su.is_bios_solution_in_sets(self.o_hsdconn)
 
+                        
+        if is_silicon_sighting  and not is_silicon_solution_in_sets:
 
-            elif ("bios" in suspect_area or "bios" in ingredient):
-                if "central_firmware" in tenant:
-                    found_central_fw = True
-                    item.get("component", "").lower()
-                    print("found_bios for bios sighitng: " + item.get("id") + " with component:" + item.get("component", "")     )
+            print(f"WARNING: Cant find  silicon solution, check suspect area and sets for {sighting_id}: {title}")
+            self.msg = f"WARNING: Cant find  silicon solution"
 
-            else: # this is for non-bios and non=slicon sighting
-                #then check if any bugeco in the non-silicon sighting.
-                if "bugeco" in subject or "sighting_central" in tenant or "central_firmware" in tenant:
-                    self.result = False
-                    self.msg = f"Found Warning for {sighting_id} "
-                    print(f"⚠️ WARNING: Found bugEco/sighting_central/central_fw in subject  for non_silicon and non_BIOS ID: {sighting_id}  {item.get('title','')}")
-
-        if ("slicon" in suspect_area or "silicon" in ingredient ) and not found_bugeco:
-            print(f"⚠️ WARNING: Cant find  bugEco for  silicon sighting  {sighting_id} {title}" )
+            #print( self.msg)
             self.result = False
-            self.msg = f"Found Warning for {sighting_id} "
-        elif ("slicon" in suspect_area or "silicon" in ingredient ) and not  found_sighting_cental:
-            print(f"⚠️ WARNING: Cant find sighting central for  silicon sighting  {sighting_id } {title}" )
+            
+        elif is_bios_sighting and not is_bios_solution_in_sets:
+            print(f"WARNING: Cant find  bios solution, check suspect area and sets for {sighting_id}: {title}")
+            self.msg = f"WARNING: Cant find bios solution"
+            #print(self.msg)
             self.result = False
-            self.msg = f"Found Warning for {sighting_id} "
-        elif ("bios" in suspect_area or "bios" in ingredient) and not found_central_fw:
-            print(f"⚠️ WARNING: Cant find  central firmware for BIOS sighting  {sighting_id} {title}")
+        elif not is_silicon_sighting  and not is_bios_sighting and \
+                (is_silicon_solution_in_sets or is_bios_solution_in_sets ):
+            print(f"WARNING: found bios or silicon solution  check suspect area and sets  {sighting_id}: {title}")
+            self.msg = f"WARNOING: found the solution is from bios or silicon "
+            #print(self.msg)
             self.result = False
-            self.msg = f"Found Warning for {sighting_id} "
         else:
-            print(f"✅ Info: Pass the link check for: " + sighting_id )
+            print(f"Info: Pass the link check:  {sighting_id}: {title}")
+            self.msg = f"Info: Pass the link check:"
             self.result = True
-            self.msg = f"Pass check for {sighting_id} "
         # how to judget the suspect area and bugeco has the same code? 
-
+        return  self.result, self.msg 
         #Then to check if sighting_central in the sets or not. 

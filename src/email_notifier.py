@@ -2,7 +2,7 @@ import win32com.client as win32
 
 
 class EmailNotifier:
-    def __init__(self, subject="platform sysdebug summary", to_list=["Wang,Dongmin"], cc_list=None, greeting=None):
+    def __init__(self, subject, to_list=["Wang,Dongmin"], cc_list=None, greeting=None):
         self.outlook = win32.Dispatch("Outlook.Application")
         self.mail = self.outlook.CreateItem(0)
         self.mail.Subject = subject
@@ -18,7 +18,7 @@ class EmailNotifier:
         self.constants = win32.constants
 
 #    def add_rule_result(self, rule_name, rows):
-    def put_rule_name_to_email(self, rule_name):
+    def put_description_to_email(self, rule_name):
         sel = self.word_editor.Application.Selection
         sel.TypeText(f"🔍 {rule_name}\n")
         sel.TypeParagraph()
@@ -65,14 +65,16 @@ class EmailNotifier:
         # ✅ 正确地 collapse 表格 range
         table.Range.Collapse(Direction=0)
         table.Range.InsertParagraphAfter()
-        # 插空行
-        self.word_editor.Application.Selection.MoveDown()
+
+        # 将 Selection 移动到当前文档末尾，避免下一张表被插入到当前表格内部
+        self.word_editor.Application.Selection.EndKey(Unit=6)  # 6 = wdStory
         self.word_editor.Application.Selection.TypeParagraph()
+
     
     def put_footer(self, domain_lead_name=""):
         self.word_editor.Application.Selection.EndKey(Unit=6)
         self.word_editor.Application.Selection.TypeParagraph()
-        self.word_editor.Application.Selection.TypeText(f"Regards,\n{domain_lead_name or 'Platform debug lead'}")
+        self.word_editor.Application.Selection.TypeText(f"Regards,\n{domain_lead_name or 'Platform debug leads'}")
 
     def display(self):
         self.mail.Display()
@@ -81,7 +83,31 @@ class EmailNotifier:
         self.mail.Send()
 
 
-#example code
+    
+
+    #this is for the external caller to simply add one table to email object
+    def add_table(self, table_data_dict, table_title: str ):
+        #table_data is a 2 D list , first row is the header.
+
+        sel = self.word_editor.Application.Selection
+        sel.TypeText(f"{table_title}\n")
+        sel.TypeText("\n")  # 空行分隔
+
+
+        if table_data_dict != []:
+            self.current_headers = list(table_data_dict[0].keys())
+            self.current_rows = table_data_dict
+            
+            
+            self.put_table_to_email()
+
+        else:
+            sel.TypeText("N.A")  # 空行分隔
+            sel.TypeText("\n")  # 空行分隔
+        sel.EndKey(Unit=6)  # 6 = wdStory
+        sel.TypeParagraph()
+
+#example code below
 def send_email_via_outlook(to, subject, body, cc=None, attachments=None):
     outlook = win32.Dispatch('Outlook.Application')
     mail = outlook.CreateItem(0)  # 0: olMailItem
