@@ -4,6 +4,8 @@ from requests_kerberos import HTTPKerberosAuth
 import urllib3
 import json
 import shutil
+import re
+from datetime import datetime
 #import PlatfSysdebug as pfsd
 
 class HSDConnection:
@@ -29,9 +31,10 @@ class HSDConnection:
     def get_full_field_name(self, field):
         prefix = "server_platf.bug."
         if field in ("suspect_area", "ingredient","days_open",  "sighting_submitted_date", "root_caused_date", "transferred_date", "regression","days_sighting_submitted",
-                    "days_lastupdate", "days_to_root_caused","days_sighting_submitted", "transferred_id", "root_cause_detail", "scrub_notes","ingredient","root_cause_detail"):
+                    "days_lastupdate", "days_to_root_caused","days_sighting_submitted", "transferred_id", "root_cause_detail", "scrub_notes","ingredient","root_cause_detail",
+                    "sighting_submitted_date"):
             full_key = prefix + field 
-        elif field in ("exposure", "forum", "implemented_date"):
+        elif field in ("exposure", "forum", "implemented_date", "report_type"):
             full_key = prefix[len('server_platf.'):] + field 
         else:
             full_key = field   
@@ -104,7 +107,7 @@ class HSDConnection:
     
         #fetch links if needed
         if fetch_links and sighting_id:
-            self.sighting_link_url = f"{self.base_url}{sighting_id}/links?fields=id%2Ctenant%2Csubject%2Ctitle%2Cowner%2Cstatus%2Clink_type"
+            self.sighting_link_url = f"{self.base_url}{sighting_id}/links?fields=id%2Ctenant%2Csubject%2Ctitle%2Cowner%2Cstatus%2Cstatus_reason%2Clink_type"
             response = requests.get(self.sighting_link_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=self.headers)
             if response.status_code == 200:
                 self.sighting_link_json = response.json()
@@ -141,7 +144,13 @@ class HSDConnection:
 
 
         if fetch_comments and sighting_id:
-            return True
+           self.children_url = f"{self.base_url}{sighting_id}/children?child_subject=comment&fields=updated_date%2Cid%2C%20title"
+           response = requests.get(self.children_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=self.headers)
+           if response.status_code == 200:
+                self.children_json = response.json()
+           else:
+                print("Failed to fetch sets")
+                return None
 
 
     def get_sighting_json(self, sighting_id=None):
@@ -193,6 +202,88 @@ class HSDConnection:
             print(f"⚠️ Warning: Sets not fetched yet. Please call fetch_data() first.")
             return None
         return self.sighting_json.get("data", [])[0].get(self.get_full_field_name(field)) or ""
+
+    def get_days_no_comment(self, field: str = "updated_date") -> str : 
+        if not hasattr(self, "children_json") or "data" not in self.children_json:
+            return ""
+        elif not self.children_json : 
+            return ""
+        else:
+            try:
+
+                submitted_date_str= self.get_sighting_field_value("submitted_date")
+
+                submitted_dt = datetime.strptime(submitted_date_str, "%Y-%m-%d %H:%M:%S.%f")
+                # 提取所有 updated_date
+                dates = [
+                    datetime.strptime(item[field].split(".")[0], "%Y-%m-%d %H:%M:%S")
+                    for item in self.children_json["data"]
+                    if field in item
+                ]
+
+
+                if not dates:
+                    latest_date = submitted_dt
+                else: 
+                    # 找到最新的时间
+                    latest_date = max(dates)
+
+                # 今天的时间（只取到秒）
+                today = datetime.now()
+
+                # 计算天数差
+                delta_days = (today - latest_date).days
+ 
+                print(f"delta_days: {delta_days}")
+                #step 2 : caclauate the scub note update
+                scrub_notes = self.get_sighting_field_value("scrub_notes")
+                days_no_scrub  = (today - submitted_dt).days
+                print(f"days_no_scrub: {days_no_scrub}")
+
+                if scrub_notes and len(scrub_notes) > 10:
+                    snippet = scrub_notes[:10].lower()
+                    match = re.search(r"w{1,2}\d{2}(\.\d)?", snippet)
+                    if match:
+                        ww_token = match.group(0)
+                        ww_date = self.parse_workweek_to_date(ww_token)
+                        if ww_date:
+                            days_no_scrub = (today - ww_date).days
+
+                
+
+                # === 3. 取最小值 ===
+                candidates = [d for d in (delta_days, days_no_scrub) if d is not None]
+                if not candidates:
+                    return ""
+
+                return str(min(candidates))
+
+            except Exception as e:
+                print(f"Error parsing dates: {e}")
+                return ""
+     
+    def parse_workweek_to_date(self, ww_str: str) -> datetime:
+        """
+        把 w38 / ww38 / w38.1 / ww38.2 转换成 datetime。
+        """
+        # 补全格式，比如 w38 → w38.0
+        print(f"caputured scrub_notes{ww_str}")
+        if re.fullmatch(r"w{1,2}\d{2}", ww_str.lower()):
+            ww_str = ww_str + ".0"
+
+        match = re.match(r"w{1,2}(\d{2})\.(\d)", ww_str.lower())
+        if not match:
+            return None
+
+        week, day = int(match.group(1)), int(match.group(2))
+
+        week = week - 1
+
+        year = datetime.now().year
+        weekday = day % 7    # .0 → 周日，.1 → 周一 ... +1 is for intel calendar
+        date_str = f"{year} {week} {weekday}"
+        return datetime.strptime(date_str, "%Y %W %w")               
+            
 
     def update_data():
         print("hello")

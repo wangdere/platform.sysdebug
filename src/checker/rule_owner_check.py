@@ -20,9 +20,17 @@ class RuleNoteCheck(BaseChecker):
         sighting_id = self.o_hsdconn.get_sighting_field_value("id")
         title = self.o_hsdconn.get_sighting_field_value("title")
         owner = self.o_hsdconn.get_sighting_field_value("owner")
+        forum = self.o_hsdconn.get_sighting_field_value("forum")
+
+        #orphan Sysdebug.platform  warn that if this sighting need to be debugged by platform system debug
+        #multiple forum, if "Sysdebug.platform" co-exists with "Sysdebug.platform.xxx", then remove the "Sysdebug.platform"
+
         if owner :
             self.result = True
             self.msg = f"Info: Pass the owner  check: owner: {owner}  {sighting_id}: {title}"
+        else:
+            self.result = False
+            self.msg = f"Warning: Failed the owner check -- no owner: {sighting_id}: {title}"
 
         return  self.result, self.msg 
         

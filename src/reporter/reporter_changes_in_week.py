@@ -1,4 +1,4 @@
-# checker/rule_note_check.py
+# reporter/reprter_changes_in_week.py
 from .base_reporter import BaseReporter
 import sighting_util as su
 from typing import Optional, List, Dict, Tuple, Any, Union
@@ -11,7 +11,7 @@ class ReporterChangesInWeek(BaseReporter):
         super().__init__()  # 如果基类有初始化，建议调用
         descrption = ""
 
-    def generate(self, sighting_list, week=None, **kwargs) -> Dict[str, List[List[Any]]]:
+    def generate(self, sighting_list, week=36, **kwargs) -> Dict[str, List[List[Any]]]:
 
         '''
         import inspect
