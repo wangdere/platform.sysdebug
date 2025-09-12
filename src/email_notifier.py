@@ -13,6 +13,7 @@ class EmailNotifier:
         self.inspector = self.mail.GetInspector
         self.word_editor = self.inspector.WordEditor
         self.word_editor.Application.Selection.TypeText(greeting or "Hi team,\n\n")
+        self.word_editor.Application.Selection.EndKey(Unit=6)
         self.current_headers = ["id", "title", "status", "exposure", "forum", "comments"]
         self.current_rows = [] 
         self.constants = win32.constants
@@ -20,6 +21,8 @@ class EmailNotifier:
 #    def add_rule_result(self, rule_name, rows):
     def put_description_to_email(self, rule_name):
         sel = self.word_editor.Application.Selection
+        print(f"rule_name:{rule_name} ")
+        print(f"sel: {sel}")
         sel.TypeText(f"🔍 {rule_name}\n")
         sel.TypeParagraph()
 

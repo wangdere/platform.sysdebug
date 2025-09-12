@@ -80,23 +80,46 @@ def is_silicon_solution_in_sets(o_hsd_conn):
         subject = item.get("subject", "").lower()
         tenant = item.get("tenant", "").lower()
         set_item_status = item.get("status", "").lower()
+        set_item_status_reason = item.get("status_reason", "").lower()
         from_tenant = item.get("from_tenant", "") or ""
         component = item.get("component", "") or ""
-
+        '''
         if "sighting_central" in from_tenant:
-            if sets_item_id == o_hsd_conn.sighting_id : # this is the sighting itself
-                return False
-
-        else:
-            if ( set_item_status != "rejected"):
-                if "bugeco" in subject :
-                    result =  True
+            
+            if set_item_status == "rejected" and set_item_status_reason == "merged": 
+                result =  True   # here will not trace more deeper into merged sighting. 
+            else:
                 non_silicon_key_words = ["tool", "sw", "doc", "val.", "board",  "dimm"]
                 if ( component !=""):
                     if "sighting_central" in tenant and all(kw not in component for kw in non_silicon_key_words):
                         result = True
-    return result
+                else:
+                    result = False
+        else:
+            if "bugeco" in subject:
+                result = True
+                if set_item_status == "rejected" and set_item_status_reason != "merged": 
+                    result =  False
+        '''
+        if "sighting_central" == tenant:
+            if set_item_status == "rejected": 
+                if set_item_status_reason == "merged" : 
+                    result = True
+            else: 
+                non_silicon_key_words = ["tool", "sw", "doc", "val.", "board",  "dimm"]
+                if ( component !=""):
+                    if all(kw not in component for kw in non_silicon_key_words):
+                        result = True
+        else:
+            if "bugeco" in subject:
+                result = True
+                if set_item_status == "rejected" and set_item_status_reason != "merged": 
+                    result =  False
 
+        if result == True : # already found
+            break
+
+    return result
                     
 
 def is_bios_solution_in_sets(o_hsd_conn):

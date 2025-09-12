@@ -377,7 +377,10 @@ def main():
 
         sighting_list = create_sighting_list([], args.queryId )
         
-        week = args.week if args.week else get_current_week_number()    
+        if(args.week):
+            week = args.week if args.week else get_current_week_number()    
+        else:
+            week = 36
 
         reporters_to_run = load_reporters()
         
@@ -390,9 +393,7 @@ def main():
 
             tables = reporter.generate(sighting_list, week)
             if args.sendemail:
-
                 o_en.put_description_to_email(reporter.get_description())
-
                 if isinstance(tables, dict):
                     for name, table_data in tables.items():
                         o_en.add_table(table_data, name)
