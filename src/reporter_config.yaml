@@ -1,4 +1,8 @@
 reporters:
   reporter_changes_in_week: no
   reporter_other: no
-  reporter_sighting_list_with_colums: yes
+  reporter_sighting_list_with_colums: no
+  reporter_diagram_ntrri: yes
+  
+  
+  

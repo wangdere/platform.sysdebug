@@ -8,7 +8,8 @@ from bs4 import BeautifulSoup
 from email_notifier import EmailNotifier
 from tabulate import tabulate
 import shutil
-
+from datetime import datetime
+import re
 def sighting_get_debug_stage(o_hsd_conn):
 
     sighting_status = o_hsd_conn.get_sighting_field_value(ht.SightingFieldEnum.status)
@@ -446,3 +447,26 @@ def sighting_show_links_sets(sighting_id):
 
     # === 打印表格
     print(tabulate(rows, headers=tbl_header, tablefmt='grid'))
+
+
+def parse_workweek_to_date(re, ww_str: str) -> datetime:
+    """
+    把 w38 / ww38 / w38.1 / ww38.2 转换成 datetime。
+    """
+    # 补全格式，比如 w38 → w38.0
+    print(f"caputured scrub_notes{ww_str}")
+    if re.fullmatch(r"w{1,2}\d{2}", ww_str.lower()):
+        ww_str = ww_str + ".0"
+
+    match = re.match(r"w{1,2}(\d{2})\.(\d)", ww_str.lower())
+    if not match:
+        return None
+
+    week, day = int(match.group(1)), int(match.group(2))
+
+    week = week - 1
+
+    year = datetime.now().year
+    weekday = day % 7    # .0 → 周日，.1 → 周一 ... +1 is for intel calendar
+    date_str = f"{year} {week} {weekday}"
+    return datetime.strptime(date_str, "%Y %W %w")         
