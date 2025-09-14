@@ -2,9 +2,11 @@ import requests
 from requests.auth import HTTPBasicAuth
 import urllib3
 import sighting_util as su
+import utils as u
 
 #su.wiki_get_page_data()
-su.wiki_add_comment_id_to_page("1563621733")
+#su.wiki_add_comment_id_to_page("1563621733")
+print(u.get_missing_workweeks("2026ww02", '2025ww34'))
 #su.wiki_add_comment_id_to_page("14612563026")
 '''
 {

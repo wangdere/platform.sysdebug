@@ -6,6 +6,8 @@ import json
 import shutil
 import re
 from datetime import datetime
+import utils as u
+from urllib.parse import quote
 #import PlatfSysdebug as pfsd
 
 class HSDConnection:
@@ -78,15 +80,20 @@ class HSDConnection:
                     ]
                 }
                 for entry in res_json.get("data", []):
+
+                    row = {}
                     for field in sighting_field_list:
                         full_key = self.get_full_field_name(field)
                         value =  entry.get(full_key)
                         if not value:
                             value = "N.A"
-                        self.sighting_json['data'].append({full_key: value})
-                        # print(f'sighting {sighting_id} field {field}: ' + value)
+                        row[full_key] = value
+                    self.sighting_json['data'].append(row)
+                # print(f'sighting {sighting_id} field {field}: ' + value)
             else:
                 self.sighting_json = res_json
+
+            # print(f'sighting {sighting_id} field list {self.sighting_json}')
 
         #get query data
         if query_id:
@@ -132,11 +139,17 @@ class HSDConnection:
 
         #fetch history if needed
         if  fetch_history and sighting_id:
-            self.sighting_history_url = f"{self.base_url}{sighting_id}/history?fields=id%2Ctitle%2C%20bug.exposure%2C%20bug.forum%2C%20status%2C%20status_reason%2Cupdated_date%2Crev"
+            
+            if(sighting_field_list): 
+                sighting_field_list_std = [self.get_full_field_name(f) for f in sighting_field_list]
+                self.sighting_history_url = f"{self.base_url}{sighting_id}/history?fields={quote(','.join(sighting_field_list_std))}"
+                #print(f"sighthing history url: {self.sighting_history_url}")
+            else:
+                self.sighting_history_url = f"{self.base_url}{sighting_id}/history?fields=id%2Ctitle%2C%20bug.exposure%2C%20bug.forum%2C%20status%2C%20status_reason%2Cupdated_date%2Crev"
             response = requests.get(self.sighting_history_url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=self.headers)
             if response.status_code == 200:
                 self.sighting_history_json = response.json()
-                #print(linksData)
+                #print(self.sighting_history_json)
             else:
                 print("Failed to fetch sets")
                 return None
@@ -245,7 +258,7 @@ class HSDConnection:
                     match = re.search(r"w{1,2}\d{2}(\.\d)?", snippet)
                     if match:
                         ww_token = match.group(0)
-                        ww_date = self.parse_workweek_to_date(ww_token)
+                        ww_date = u.parse_workweek_to_date(re, ww_token)
                         if ww_date:
                             days_no_scrub = (today - ww_date).days
 
@@ -262,27 +275,7 @@ class HSDConnection:
                 print(f"Error parsing dates: {e}")
                 return ""
      
-    def parse_workweek_to_date(self, ww_str: str) -> datetime:
-        """
-        把 w38 / ww38 / w38.1 / ww38.2 转换成 datetime。
-        """
-        # 补全格式，比如 w38 → w38.0
-        print(f"caputured scrub_notes{ww_str}")
-        if re.fullmatch(r"w{1,2}\d{2}", ww_str.lower()):
-            ww_str = ww_str + ".0"
-
-        match = re.match(r"w{1,2}(\d{2})\.(\d)", ww_str.lower())
-        if not match:
-            return None
-
-        week, day = int(match.group(1)), int(match.group(2))
-
-        week = week - 1
-
-        year = datetime.now().year
-        weekday = day % 7    # .0 → 周日，.1 → 周一 ... +1 is for intel calendar
-        date_str = f"{year} {week} {weekday}"
-        return datetime.strptime(date_str, "%Y %W %w")               
+      
             
 
     def update_data():

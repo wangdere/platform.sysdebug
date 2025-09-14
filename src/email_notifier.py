@@ -22,7 +22,6 @@ class EmailNotifier:
     def put_description_to_email(self, rule_name):
         sel = self.word_editor.Application.Selection
         print(f"rule_name:{rule_name} ")
-        print(f"sel: {sel}")
         sel.TypeText(f"🔍 {rule_name}\n")
         sel.TypeParagraph()
 

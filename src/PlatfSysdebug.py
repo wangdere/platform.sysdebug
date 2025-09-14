@@ -389,8 +389,6 @@ def main():
             o_en = EmailNotifier(f"platform sysdebug report")
 
         for reporter in reporters_to_run:
-
-
             tables = reporter.generate(sighting_list, week)
             if args.sendemail:
                 o_en.put_description_to_email(reporter.get_description())
