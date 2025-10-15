@@ -10,6 +10,32 @@ from tabulate import tabulate
 import shutil
 from datetime import datetime
 import re
+import uuid
+from bs4 import element
+#wiki config
+WIKI_KNOWLEDGE_TYPE_TABLE_CONFIG = {
+    "pythonsv": {
+        "data_to_cap": "text",   # 原来的 scenario 改名
+        "command": "codeblock",  # 自动渲染为 codeblock
+        "comment": "text",
+    },
+    "link": {
+        "domain": "text",
+        "link_brief": "text",
+        "links": "text",
+    }
+}
+
+
+WIKI_DEFAULT_PAGE_IDS = {
+    "pythonsv": "4358740007",
+    "link": "4358740678",
+    "comments": "4260912289"
+}
+
+
+
+
 def sighting_get_debug_stage(o_hsd_conn):
 
     sighting_status = o_hsd_conn.get_sighting_field_value(ht.SightingFieldEnum.status)
@@ -169,12 +195,15 @@ def sighting_check_sightings_based_on_rules(sighting_list, rule_list, name="PV",
             for sighting_id in  sighting_list:
                 o_hsdconn = HSDConnection(sighting_id)
                 o_hsdconn.fetch_data(sighting_id=sighting_id )
-                
-                passed, msg = checker.run(o_hsdconn)
-                status = "✅" if passed else "⚠️"
+                report_type = o_hsdconn.get_sighting_field_value("report_type") or ""
+                if (report_type == "sighting"):
+                    passed, msg = checker.run(o_hsdconn)
+                    status_icon = "✅" if passed else "⚠️"
+                else:
+                    passed, msg = True, "presighting, no checking"
                 if(sendemail):
                     o_en.add_rule_result(o_hsdconn, passed, msg)
-                print(f"{status} {msg}")
+                print(f"{status_icon} {msg}")
             if(sendemail):
                 o_en.put_table_to_email()
         if(sendemail):
@@ -188,8 +217,6 @@ def wiki_get_page_data(page_id = "4260912289"):
 
     url = f"https://wiki.ith.intel.com/rest/api/content/{page_id}?expand=body.storage,version.number"
 
-    # 用 curl 中 -u 的账号密码
-    auth = HTTPBasicAuth("wangdere", "aa.bb.1122")
 
     headers = {
         "Content-Type": "application/json",
@@ -197,6 +224,7 @@ def wiki_get_page_data(page_id = "4260912289"):
     }
 
     response = requests.get(url, headers=headers, verify=False)
+
     if(response.status_code == 200): 
         print("Get Wiki page data, Status code:", response.status_code)
         # print("Response:")
@@ -205,6 +233,119 @@ def wiki_get_page_data(page_id = "4260912289"):
     else:
         print(f"cant  get page data of {url}")
         return None
+
+
+def wiki_add_row_to_page(page_id, knowledge_type, row_data, check_dup = False):
+    """
+    row_data: dict, key 必须和 DOMAIN_TABLE_CONFIG[domain_name] 的列名对应
+    """
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    print (f"page id = {page_id}")
+    current_page_data = wiki_get_page_data(page_id)
+    if not current_page_data:
+        print("❌ Page not found")
+        return
+    
+    old_html = current_page_data["body"]["storage"]["value"]
+    old_version = current_page_data['version']['number']
+    old_title = current_page_data['title']
+    old_type = current_page_data['type']
+    
+    soup = BeautifulSoup(old_html, "html.parser")
+    
+    table_class = f"{knowledge_type}_table"
+    table = soup.find("table", {"class": table_class})
+    
+    # 表格不存在时创建
+    if table is None:
+        table = soup.new_tag("table", attrs={"class": table_class})
+        header = soup.new_tag("tr")
+        for col in WIKI_KNOWLEDGE_TYPE_TABLE_CONFIG[knowledge_type].keys():
+            th = soup.new_tag("th")
+            th.string = col
+            header.append(th)
+        table.append(header)
+        soup.append(table)
+    
+    # 获取列顺序
+    header_row = table.find("tr")
+    headers = [th.text.strip() for th in header_row.find_all("th")]
+    
+    # 遍历已有行，检查是否重复（以第一列为唯一键，可根据需要改）
+    if check_dup == True: 
+        existing_keys = []
+        for row in table.find_all("tr")[1:]:
+            cols = row.find_all("td")
+            if cols:
+                existing_keys.append(cols[0].text.strip())
+        
+        key_value = list(row_data.values())[0]
+        if key_value in existing_keys:
+            print(f"行已存在: {key_value}")
+            return
+    
+    # 生成新行
+    new_row = soup.new_tag("tr")
+    for col in headers:
+        td = soup.new_tag("td")
+        value = row_data.get(col, "")
+        
+        if WIKI_KNOWLEDGE_TYPE_TABLE_CONFIG[knowledge_type][col] == "codeblock":
+            macro_id = str(uuid.uuid4())  # 生成 36 位标准 UUID
+            div_wrapper = soup.new_tag("div", attrs={"class": "content-wrapper"})
+
+            macro = soup.new_tag("ac:structured-macro", attrs={
+                "ac:name": "code",
+                "ac:schema-version": "1",
+                "ac:macro-id": macro_id  # 可以随机生成 UUID
+            })
+
+            lang_param = soup.new_tag("ac:parameter", attrs={"ac:name": "language"})
+            lang_param.string = "py"  # Python
+
+            theme_param = soup.new_tag("ac:parameter", attrs={"ac:name": "theme"})
+            theme_param.string = "Midnight"
+            
+            body_tag = soup.new_tag("ac:plain-text-body")
+            body_tag.append(element.CData(value))  # 代码内容
+
+            macro.append(lang_param)
+            macro.append(theme_param)
+            macro.append(body_tag)
+            div_wrapper.append(macro)
+            td.append(div_wrapper)
+
+
+
+
+            '''
+            pre_tag = soup.new_tag("pre",attrs={"style": "white-space: pre-wrap; word-wrap: break-word;"})
+            code_tag = soup.new_tag("code", attrs={"class": "language-python"})
+            code_tag.string = value
+            pre_tag.append(code_tag)
+            td.append(pre_tag)
+            '''
+        else:
+           code_tag = soup.new_tag("code")
+           code_tag.string = value
+           td.append(code_tag)
+        new_row.append(td)
+    
+    # 插入到 tbody，如果没有就直接 append
+    tbody = table.find("tbody")
+    if tbody is None:
+        table.append(new_row)
+    else:
+        tbody.append(new_row)
+    
+    new_html = str(soup)
+    print(new_html)
+    status, resp_text = wiki_update_page_html(new_html, old_version + 1, page_id, old_title, old_type)
+    print(f"Wiki Update Status: {status}")
+
+
+
+
 
 
 def wiki_add_comment_id_to_page(comment_id, page_id = "4260912289"):
@@ -449,24 +590,3 @@ def sighting_show_links_sets(sighting_id):
     print(tabulate(rows, headers=tbl_header, tablefmt='grid'))
 
 
-def parse_workweek_to_date(re, ww_str: str) -> datetime:
-    """
-    把 w38 / ww38 / w38.1 / ww38.2 转换成 datetime。
-    """
-    # 补全格式，比如 w38 → w38.0
-    print(f"caputured scrub_notes{ww_str}")
-    if re.fullmatch(r"w{1,2}\d{2}", ww_str.lower()):
-        ww_str = ww_str + ".0"
-
-    match = re.match(r"w{1,2}(\d{2})\.(\d)", ww_str.lower())
-    if not match:
-        return None
-
-    week, day = int(match.group(1)), int(match.group(2))
-
-    week = week - 1
-
-    year = datetime.now().year
-    weekday = day % 7    # .0 → 周日，.1 → 周一 ... +1 is for intel calendar
-    date_str = f"{year} {week} {weekday}"
-    return datetime.strptime(date_str, "%Y %W %w")         
