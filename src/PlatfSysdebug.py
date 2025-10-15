@@ -341,7 +341,18 @@ def main():
     parser.add_argument("--updateField", "--uf",nargs="*" , help='Choose one of predefined areas')
     parser.add_argument("--checkRule", "--cr", metavar="rule",   nargs="*" ,  help='to run the checkers, default is to check owner, all--all rules; the rules are in checker folder')
     parser.add_argument("--sendemail", "--se", action="store_true", help="If specified, send the email. Default is False.")
-    parser.add_argument("--toWiki", "--tw",  metavar="TOWIKI",  help="Put the comment id to wiki paage https://wiki.ith.intel.com/display/oksdebug/Informative+comments")
+    
+    # for wiki
+    parser.add_argument("--toWiki", "--tw",  nargs="?", const=True, help="Put the comment id to wiki paage https://wiki.ith.intel.com/display/oksdebug/Informative+comments")
+    parser.add_argument("--pageId", help="Wiki page ID")
+    parser.add_argument("--knowledge", help="knowledge type: [pythonsv, link]")
+
+    for domain, cols in su.WIKI_KNOWLEDGE_TYPE_TABLE_CONFIG.items():
+        for col in cols.keys():
+            parser.add_argument(f"--{col}", help=f"{col} for knowledge of {domain}")
+
+
+    #for report
     parser.add_argument("--report", "--rt", action="store_true",  help=" report the sighting summarzed info")
     parser.add_argument("--week", "--wk", type=int, nargs="?", default=None, help="week number for report") 
     
@@ -349,13 +360,13 @@ def main():
     # parser.add_argument("--updateRelease", help="Release to update")
     # parser.add_argument("--updateReleaseAffected", help="Release affected to update")
     # parser.add_argument("--exposure", help="Exposure level to update")
+    args  = parser.parse_args()
 
-    args = parser.parse_args()
 
 
     import sys
     import io
-
+    import os
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
 
     '''
@@ -449,14 +460,34 @@ def main():
                 #start running for 1 sub system.
                 su.sighting_check_sightings_based_on_rules(sighting_list,rule_checkers, name, args.sendemail  )
 
+    def handle_wiki_command_arg(command_arg) : 
+        """支持传 txt 文件路径"""
+        if command_arg and os.path.isfile(command_arg) :
+            with open(command_arg, "r", encoding="utf-8") as f:
+                return f.read()
+        return command_arg or ""
 
     if args.toWiki:
-        su.wiki_add_comment_id_to_page(args.toWiki)
+        if  args.pageId is None and args.knowledge is None:
+            su.wiki_add_comment_id_to_page(args.toWiki)
+        elif args.knowledge or (args.pageId and  args.knowledge):
+                # 动态添加 domain 对应列的参数
+            row_data = {}
+            for col in su.WIKI_KNOWLEDGE_TYPE_TABLE_CONFIG[args.knowledge].keys():
+                value = getattr(args, col)
+                if col == "command":  # 特殊处理
+                    value = handle_wiki_command_arg(value)
+                row_data[col] = value or ""
+            if args.pageId : 
+                pageId = args.pageId
+            else:
+                pageId = su.WIKI_DEFAULT_PAGE_IDS[args.knowledge] 
+            su.wiki_add_row_to_page(pageId, args.knowledge , row_data)
 
 
     if args.addTag or args.listTag or args.removeTag :
-        if not len(args.id) or len(args.id) > 1:
-             print("❌ Please provide exactly one --id. Multiple or empty values are not allowed.")
+        if not len(args.id) :
+             print("❌ Please provide at least one one ")
              sys.exit(1)
 
 
