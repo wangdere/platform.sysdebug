@@ -4,7 +4,9 @@ from typing import Optional, List, Dict, Tuple, Any, Union
 from datetime import datetime, timedelta
 from  hsd_connection  import HSDConnection
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import pandas as pd
+from datetime import datetime
+import re
 
 class ReporterSightingListWithColumns(BaseReporter): 
  
@@ -29,7 +31,21 @@ class ReporterSightingListWithColumns(BaseReporter):
 #            for future in as_completed(futures):
 #                result_table.append(future.result())
 
-        return {"result": self.result_table}
+
+        # 保存结果为Excel ===
+        
+        if self.result_table:
+            df = pd.DataFrame(self.result_table)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # 清理隐藏字符，避免 Excel 乱码
+            df = df.applymap(lambda x: re.sub(r'[\u200B-\u200D\uFEFF]', '', x) if isinstance(x, str) else x)
+
+            filename = f"sighting_report_{timestamp}.xlsx"
+            df.to_excel(filename, index=False)
+            print(f"✅ Report saved to {filename}")
+
+            return {"result": self.result_table}
 
     def process_sighting(self, s):
             o_hsd_conn = HSDConnection()
@@ -51,7 +67,7 @@ class ReporterSightingListWithColumns(BaseReporter):
             suspect_area = o_hsd_conn.get_sighting_field_value("suspect_area")
             days_no_comment = o_hsd_conn.get_days_no_comment()
             report_type = o_hsd_conn.get_sighting_field_value("report_type")
-
+            trans_team_found,trans_conclusion, trans_status, trans_tenant, refined_ingredient  = o_hsd_conn.get_refined_ingredient()
             warning_msg = ""
             warrning_count = 0
 
@@ -90,6 +106,12 @@ class ReporterSightingListWithColumns(BaseReporter):
                     "report_type": report_type,
                     "days_no_substantial_update".replace("_", "_\u200B"): days_no_comment,
                     "warning": warning_msg,
+                    "trans_tenant": trans_tenant,
+                    "trans_status": trans_status,
+                    "trans_team_found": trans_team_found,
+                    "refined_ingredient": refined_ingredient,
+                    "trans_conclusion": trans_conclusion
+
                 })
     
     def get_description(self): 

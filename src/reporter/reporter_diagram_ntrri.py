@@ -12,6 +12,7 @@ from hsd_types import PlatfStatusReason, PlatfStatus
 
 import matplotlib.colors as mcolors
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import copy
 '''
 The structure of the table: (basic) 
 0 step ( individual sighting): raw data: 
@@ -89,7 +90,7 @@ ww            rule1      rule2            ids           count
 
 
 
-
+# ------------------------------------
 back up for 2nd step(may not be used): 
    ww      id_1         id_2    id_3 ..... 
 2025ww32   ""  
@@ -112,7 +113,7 @@ data strucutre of the output of 2nd step:
                         ........
                     ]
 }
-
+# ------------------------------------
 '''
 
 
@@ -122,12 +123,13 @@ class ReporterNtrri(BaseReporter):
         super().__init__()  # 如果基类有初始化，建议调用
         self.description = "Diagram of debugging phase " 
         self.sighting_field_list=["exposure", "status", "status_reason", "updated_date", "id","rev", "report_type"]
+        self.rules = ["rule1", "rule2"]
 
     def generate(self, sighting_list, start_date=None, **kwargs) -> Dict[str, List[List[Any]]]:
         self.sightings = sighting_list
         result_table = []
         all_timelines = {}
-        print(f"Diagram Ntrri start to run")
+        print(f"Diagram  start to run from {self.__class__.__name__}")
 
 
         # 设置线程池大小，根据CPU/IO情况调整，通常IO密集型可以多一些线程
@@ -149,10 +151,10 @@ class ReporterNtrri(BaseReporter):
 
             all_timelines[s]  = self.build_sighting_timeline(history_data) #history_data is a list
         '''
-        # print(f"generated all timelines {all_timelines}")
+        #print(f"generated all timelines {all_timelines}")
 
         aggr = self.aggregate_sightings(all_timelines)
-        print(f"aggregated all timelines {aggr}")
+       # print(f"aggregated all timelines {aggr}")
 
         self.plot_stacked_bar(aggr[self.description])
         #self.plot_with_trendline(aggr[self.description])
@@ -178,24 +180,36 @@ class ReporterNtrri(BaseReporter):
 
 
 
-    def append_and_update_prev(self, all_weeks, ww, exposure, status, status_reason, rule1_value,rule2_value, prev_dict): 
+    def append_and_update_prev(self, all_weeks, current_dict, prev_dict): 
         #this fucntion is the real append to for the rev entry.
+    
+        # 保存一份快照
+        all_weeks.append(copy.deepcopy(current_dict))
+
+        # 更新 prev_dict
+        prev_dict.clear()
+        prev_dict.update(copy.deepcopy(current_dict))
+        #this fucntion is the real append to for the rev entry.
+
+        '''
         all_weeks.append({
-            "ww": ww,
-            "status": status,
-            "status_reason":status_reason,
-            "exposure": exposure,
-            "rule1": rule1_value ,
-            "rule2": rule2_value
+            "ww": current_dict["ww"],
+            "status": current_dict["status"],
+            "status_reason":current_dict["status_reason"],
+            "exposure": current_dict["exposure"],
+            "rule1": current_dict["rule1"] ,
+            "rule2": current_dict["rule2"]
         })
 
         # 更新 prev_dict
-        prev_dict["ww"] = ww
-        prev_dict["status"] = status
-        prev_dict["status_reason"] = status_reason
-        prev_dict["exposure"] = exposure
-        prev_dict["rule1_value"] = rule1_value
-        prev_dict["rule2_value"] = rule2_value   
+        prev_dict["ww"] = current_dict["ww"]
+        prev_dict["status"] = current_dict["status"]
+        prev_dict["status_reason"] = current_dict["status_reason"]
+        prev_dict["exposure"] = current_dict["exposure"]
+        prev_dict["rule1"] = current_dict["rule1"]
+        prev_dict["rule2"] = current_dict["rule2"]
+        '''
+
 
     def fill_missing_weeks(self, all_weeks, mw,  prev_dict): 
         #this fucntion is the real append to for the rev entry.
@@ -204,12 +218,48 @@ class ReporterNtrri(BaseReporter):
             "status": prev_dict["status"],
             "status_reason":prev_dict ["status_reason"],
             "exposure":prev_dict ["exposure"],
-            "rule1": prev_dict["rule1_value"] ,
-            "rule2": prev_dict["rule2_value"]
+            "rule1": prev_dict["rule1"] ,
+            "rule2": prev_dict["rule2"]
         })
 
         # 更新 prev_dict
         prev_dict["ww"] = mw
+
+    def initialize_prev_dict(self, prev_dict): 
+        prev_dict.clear()
+        prev_dict["ww"] = ""
+        for fd in  self.sighting_field_list:
+            prev_dict[fd] = ""
+
+        for rule in  self.rules:
+            prev_dict[rule] = ""
+
+    def calculate_current_dict(self, curren_rec_with_raw_fields, current_dict, prev_dict):
+        ww = u.date_to_workweek(curren_rec_with_raw_fields.get("updated_date"))
+        exposure = curren_rec_with_raw_fields.get("bug.exposure", "").lower()
+        current_status = curren_rec_with_raw_fields.get("status", "").lower()
+        current_status_reason = curren_rec_with_raw_fields.get("status_reason", "").lower()
+        
+        if ("critical" in exposure or "high" in exposure ): 
+                rule1_value= "C_H"
+        elif ("medium" in exposure):  
+                rule1_value= "M"
+        else:
+                rule1_value= "L"
+
+        rule2_value = "assigned" if (current_status == PlatfStatus.open and current_status_reason != PlatfStatusReason.transferred and current_status_reason !=PlatfStatusReason.root_caused)  \
+                        else "transferred" if (current_status == PlatfStatus.open and current_status_reason == PlatfStatusReason.transferred)  \
+                        else "root_caused" if (current_status == PlatfStatus.open and current_status_reason == PlatfStatusReason.root_caused) \
+                        else "implemented" if (current_status == PlatfStatus.implemented) \
+                        else  "closed"
+        current_dict["ww"] = ww
+        current_dict["status"] = current_status
+        current_dict["status_reason"] = current_status_reason
+        current_dict["exposure"] = exposure
+        current_dict["rule1"] = rule1_value
+        current_dict["rule2"] = rule2_value   
+
+
 
     # Step 1.0 → Step 1.1 : 每个 sighting 的时间线补齐
     def build_sighting_timeline(self, history_data, start_ww="2025ww34", end_ww="2025ww37") -> List:
@@ -226,13 +276,15 @@ class ReporterNtrri(BaseReporter):
         all_weeks = []
         total_versions_count = len(history_data)
         prev_dict = {}
-        prev_dict["ww"] = ""
-        prev_dict["status"] = ""
-        prev_dict["status_reason"] = ""
-        prev_dict["exposure"] = ""
-        prev_dict["rule1_value"] = ""
-        prev_dict["rule2_value"] = ""
+        current_dict = {}
+        self.initialize_prev_dict(prev_dict)
         for i, rec in enumerate(history_data):
+
+            self.calculate_current_dict(rec, current_dict, prev_dict)
+            ww = current_dict["ww"]
+
+
+            '''
             ww = u.date_to_workweek(rec.get("updated_date"))
             
             exposure = rec.get("bug.exposure", "").lower()
@@ -251,6 +303,10 @@ class ReporterNtrri(BaseReporter):
                            else "root_caused" if (current_status == PlatfStatus.open and current_status_reason == PlatfStatusReason.root_caused) \
                            else "implemented" if (current_status == PlatfStatus.implemented) \
                            else  "closed"
+            '''
+
+
+
             # print(f"ww {ww}, and prev week {prev_dict['ww']}, history-data len is {len(history_data)}, i = {i}")
             # 补齐中间的 workweek and append
             # 如果不是第一个记录，补齐前一个 ww 到当前 ww 之间的周
@@ -261,20 +317,23 @@ class ReporterNtrri(BaseReporter):
                 
             elif i > 0:
                 if (prev_dict["ww"] != ww):
+                    # print("DEBUG get_missing_workweeks:", ww, prev_dict["ww"], current_dict["ww"], type(ww), type(prev_dict["ww"]), type( current_dict["ww"]))
                     missing_weeks = u.get_missing_workweeks(ww, prev_dict["ww"])
+                    # print(f"missing_weeks {missing_weeks}, history-data len is {len(history_data)}, i = {i}")
                     for mw in missing_weeks:
                         self.fill_missing_weeks(all_weeks, mw, prev_dict)
         
-            # append 当前记录        , once appended, the prev_* should follow
-            if (i + 1)< total_versions_count:  #not the last one
-                next_ww = u.date_to_workweek(history_data[i+1].get("updated_date"))
-                # print(f"next_ww {next_ww}")
-                if( next_ww == ww):
-                    pass
-                else:
-                    self.append_and_update_prev(all_weeks, ww, exposure, current_status, current_status_reason, rule1_value, rule2_value, prev_dict)
-            else:            # the last one, must append
-                self.append_and_update_prev(all_weeks, ww, exposure, current_status, current_status_reason, rule1_value, rule2_value, prev_dict)
+                # append 当前记录        , once appended, the prev_* should follow
+                if (i + 1)< total_versions_count:  #not the last one
+                    next_ww = u.date_to_workweek(history_data[i+1].get("updated_date"))
+                    # print(f"next_ww =  {next_ww}, ww =  {ww}")
+                    if( next_ww == ww):
+                        pass
+                    else:
+                        # print(f"append the dict of {current_dict['ww']}")
+                        self.append_and_update_prev(all_weeks, current_dict, prev_dict)
+                else:            # the last one, must append
+                    self.append_and_update_prev(all_weeks, current_dict, prev_dict)
 
         #append to the today's ww. 
         # 今天的时间（只取到秒）
@@ -289,7 +348,7 @@ class ReporterNtrri(BaseReporter):
             pass
         else:  # this week is 1 week later than last rev, so fill it.  In our algorithm aobve, only 1 week later can happen
             self.fill_missing_weeks(all_weeks, this_ww, prev_dict)
-            
+
 
         df = pd.DataFrame(all_weeks)
         min_ww, max_ww = df["ww"].min(), df["ww"].max()

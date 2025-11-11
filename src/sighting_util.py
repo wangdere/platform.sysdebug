@@ -12,6 +12,9 @@ from datetime import datetime
 import re
 import uuid
 from bs4 import element
+import win32com.client
+import pandas as pd
+import pythoncom
 #wiki config
 WIKI_KNOWLEDGE_TYPE_TABLE_CONFIG = {
     "pythonsv": {
@@ -139,9 +142,10 @@ def is_silicon_solution_in_sets(o_hsd_conn):
                         result = True
         else:
             if "bugeco" in subject:
-                result = True
                 if set_item_status == "rejected" and set_item_status_reason != "merged": 
                     result =  False
+                else:
+                    result = True
 
         if result == True : # already found
             break
@@ -590,3 +594,91 @@ def sighting_show_links_sets(sighting_id):
     print(tabulate(rows, headers=tbl_header, tablefmt='grid'))
 
 
+def sighting_read_out_from_working_book(sighting_id, field): 
+  
+    field_map = {
+        "server_platf.bug.executive_summary": "executive_summary",
+        "server_platf.bug.sysdbg_notes1": "sysdbg_notes1",
+        "server_platf.bug.sysdbg_notes2": "sysdbg_notes2",
+        "server_platf.bug.sysdbg_notes3": "sysdbg_notes3",
+        "server_platf.bug.sysdbg_notes4": "sysdbg_notes4",
+    }
+    EXCEL_URL = "https://intel.sharepoint.com/sites/eaglestreamplatformsysdebug/Shared%20Documents/OKS%20DMR%20Sysdebug/DMR_Sysdebug_working_sheet.xlsm?web=1"
+    TARGET_SHEET = "Updating"
+    excel_col = field_map.get(field)
+
+
+    if not excel_col:
+        print(f"⚠️ Unsupported field '{field}', skipped.")
+        return ""
+  
+    try:
+        # 创建独立 Excel 实例
+        # excel = win32com.client.Dispatch("Excel.Application")
+        # excel.Visible = False
+        #         
+        # 尝试连接已经打开的 Excel
+        try:
+            excel = win32com.client.GetActiveObject("Excel.Application")
+            print("✅ Connected to existing Excel")
+            print("Visible:", excel.Visible)  # True/False
+            print("Workbooks:", [b.Name for b in excel.Workbooks])
+
+            if not excel.Visible:
+                print("⚠️ Existing Excel is hidden. Forcing visible=True")
+                excel.Visible = True            
+        except:
+            # 如果没有打开的 Excel，就新建一个
+            excel = win32com.client.Dispatch("Excel.Application")
+            print("✅ New Excel Object created")
+            excel.Visible = True
+
+        # Workbooks 对象
+        wb = None
+        workbooks = excel.Workbooks
+        
+        for book in excel.Workbooks:
+            print(book.Name)
+            if book.Name in  EXCEL_URL.split("/")[-1]:
+                wb = book
+                print(f"✅ Found already opened workbook: {book.Name}")
+                break
+
+        # SharePoint 文件 URL
+        if wb == None: 
+            # 打开文件
+            wb = workbooks.Open(EXCEL_URL)
+            print(f"Open excel from share point ")
+
+        if wb == None:
+            print(f"Workbook can't be openned")
+            return ""
+
+        ws = wb.Sheets(TARGET_SHEET)
+        data = ws.UsedRange.Value
+        df = pd.DataFrame(data[1:], columns=data[0])
+
+        
+        # 查找指定 sighting id 行
+        df = df.dropna(subset=["id"])
+        df["id"] = df["id"].apply(lambda x: str(int(x)) if pd.notna(x) else "")
+
+        row = df.loc[df["id"] == str(sighting_id)]
+
+        if row.empty:
+            print(f"❌ can't find id={sighting_id} in sheet '{TARGET_SHEET}'")
+            value = ""
+        else:
+            cols = row.columns[:9]  # 前 10 列的列名
+            print(f"found row:  {row[cols]}")
+            print(df.columns.tolist())
+            value = str(row.iloc[0][excel_col]).strip()
+            print(f"✅ from Excel '{TARGET_SHEET}' read {excel_col} (id={sighting_id}, (value = {value}))")
+    
+    except Exception as e:
+        print(f"❌ read Excel meet erros: {e}")
+        value = ""
+
+    return value    
+
+    

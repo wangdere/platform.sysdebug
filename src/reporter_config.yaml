@@ -1,8 +1,10 @@
 reporters:
-  reporter_changes_in_week: no
-  reporter_other: no
-  reporter_sighting_list_with_colums: yes
-  reporter_diagram_ntrri: no
+  reporter_changes_in_week: true
+  reporter_other: false
+  reporter_sighting_list_with_colums: false
+  reporter_diagram_ntrri: false
+  reporter_diagram_race_chart_overall: false
   
+
   
   
