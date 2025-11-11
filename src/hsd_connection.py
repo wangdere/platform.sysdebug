@@ -9,7 +9,7 @@ from datetime import datetime
 import utils as u
 from urllib.parse import quote
 #import PlatfSysdebug as pfsd
-
+from typing import Tuple
 class HSDConnection:
     def __init__(self, sighting_id='', query_id = ''):
             self.sighting_id = sighting_id
@@ -40,6 +40,7 @@ class HSDConnection:
             full_key = prefix[len('server_platf.'):] + field 
         else:
             full_key = field   
+        
         return full_key
 
     def fetch_data(self, *, sighting_id=None, query_id=None, sighting_field_list=None, query_field_list=None, \
@@ -275,8 +276,56 @@ class HSDConnection:
                 print(f"Error parsing dates: {e}")
                 return ""
      
-      
-            
+    #return : team_found if it is sighting central or central firmware else "" 
+    #         conclusion if it is sighting central 
+    #         status
+    #         tenant 
+    #         ingredient
+    def get_refined_ingredient(self) -> Tuple[str, str]:
+
+        transferred_id = self.get_sighting_field_value("transferred_id")
+        local_ingredient = self.get_sighting_field_value("ingredient") 
+        local_tenant =  "server_platf"
+        local_status = self.get_sighting_field_value("status")
+        local_team_found = self.get_sighting_field_value("bug.team_found")
+        
+
+
+        if transferred_id == "" : 
+           return  local_team_found , "", local_status, local_tenant, local_ingredient
+
+        elif any(keyword.lower() in transferred_id.lower() for keyword in ["bmc", "board", "jira", "github", "pfr", "cpld" ]):
+           return  local_team_found, "", local_status, local_tenant, local_ingredient
+
+        print(f"To check the {transferred_id} 's component as ingredient")
+        try:
+            o_hsd_conn = HSDConnection()  # 通常先构造再 fetch
+            o_hsd_conn.fetch_data(
+                sighting_id=transferred_id,
+                sighting_field_list=["tenant", "component", "status", "sighting.team_found", "sighting.conclusion"]
+            )
+        except Exception as e:
+            # fetch 失败时，回退到默认
+            print(f"Warning: failed to fetch sighting {transferred_id}: {e}")
+            return local_team_found, "",local_status, local_tenant, local_ingredient
+
+        trans_tenant = o_hsd_conn.get_sighting_field_value("tenant")
+        refined_ingredient = o_hsd_conn.get_sighting_field_value("component")
+        trans_team_found = o_hsd_conn.get_sighting_field_value("sighting.team_found")
+        trans_conclusion = o_hsd_conn.get_sighting_field_value("sighting.conclusion")
+        trans_status = o_hsd_conn.get_sighting_field_value("status")
+
+        if trans_tenant in ["sighting_central"]: 
+            if any(keyword.lower() in refined_ingredient.lower() for keyword in ["ifwi", "bios"]):  
+                return trans_team_found,trans_conclusion, trans_status, trans_tenant, local_ingredient
+            else:   
+                return trans_team_found,trans_conclusion, trans_status, trans_tenant, refined_ingredient    
+        elif trans_tenant in ["central_firmware", "server_platf_ae"]: 
+            return trans_team_found,trans_conclusion,  trans_status, trans_tenant, refined_ingredient    
+        else:
+            return trans_team_found,trans_conclusion, trans_status,  trans_tenant or "server_platf", local_ingredient
+    
+        
 
     def update_data():
         print("hello")

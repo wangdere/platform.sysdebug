@@ -22,7 +22,8 @@ def load_reporters(path="reporter_config.yaml"):
     with open(path, "r") as f:
         cfg = yaml.safe_load(f)
     reporters_cfg = cfg.get("reporters", {})
-    selected_names = [name for name, enabled in reporters_cfg.items() if enabled]
+    selected_names = [name for name, enabled in reporters_cfg.items()  if str(enabled).lower() in ("yes", "true")]
+    print(selected_names)
     for loader, name, is_pkg in pkgutil.iter_modules(['reporter']):
         if name == "base_reporter": continue #skip base report which is a virtual class
 
@@ -32,8 +33,9 @@ def load_reporters(path="reporter_config.yaml"):
         module = importlib.import_module(f"reporter.{name}")
         for attr in dir(module):
             cls = getattr(module, attr)
-            if isinstance(cls, type) and issubclass(cls, base_reporter.BaseReporter) and cls != base_reporter.BaseReporter:
+            if isinstance(cls, type) and  issubclass(cls, base_reporter.BaseReporter) and cls != base_reporter.BaseReporter and   cls.__module__ == module.__name__  :
                 reporters.append(cls())
+                print(f"loaded {cls()}")
     return reporters   
 
 
@@ -242,7 +244,50 @@ def updateSuspectAreaIngredient(sighting_id, args):
         return
     
 
-def updateField_Parse(field_list):
+def updateField_Parse_with_Excel(sighting_id, field_list):
+    update_dict = {
+        "tenant": "server_platf",
+        "subject": "bug",
+        "fieldValues": [
+
+        ]
+    }
+
+    blocked_keys = {"suspect_area", "ingredient"}
+
+    if field_list:
+        for item in field_list:
+            if '=' in item:
+                key, value = item.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+
+                if key in blocked_keys:
+                    print(f"❌ Field '{key}' cannot be updated using --updateField.")
+                else:
+                    update_dict["fieldValues"].append({key: value})
+            elif  item in  ["server_platf.bug.executive_summary", 
+                            "server_platf.bug.sysdbg_notes1",
+                            "server_platf.bug.sysdbg_notes2",
+                            "server_platf.bug.sysdbg_notes3",
+                            "server_platf.bug.sysdbg_notes4" ] :
+                    value_from_excel = su.sighting_read_out_from_working_book(sighting_id, item)
+                    if value_from_excel:
+                        update_dict["fieldValues"].append({item: value_from_excel})
+                    else:
+                        print(f"⚠️ not get the content from excel for {item}, skipped.")
+            else: 
+                print(f"⚠️ skipped argument: {item}")
+    else:
+        print(f"⚠️ No Field to update")
+    # json_body = json.dumps(update_dict)
+    return   update_dict
+
+
+
+
+
+def updateField_Parse_with_txt_file(field_list):
     update_dict = {
         "tenant": "server_platf",
         "subject": "bug",
@@ -263,8 +308,24 @@ def updateField_Parse(field_list):
                     print(f"❌ Field '{key}' cannot be updated using --updateField.")
                 else:
                     update_dict["fieldValues"].append({ key : value})
-            else:
-                print(f"⚠️ Invalid format (should be key=value): {item}")
+            elif  item in  ["server_platf.bug.executive_summary", 
+                            "server_platf.bug.sysdbg_notes1",
+                            "server_platf.bug.sysdbg_notes2",
+                            "server_platf.bug.sysdbg_notes3",
+                            "server_platf.bug.sysdbg_notes4" ] :
+                file_path = "paragraph_upload.txt"
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        value = f.read().strip()
+                    update_dict["fieldValues"].append({item: value})
+                    print(f"✅ Loaded suspect_area from {file_path}")
+                except FileNotFoundError:
+                    print(f"❌ File not found: {file_path}")
+                except Exception as e:
+                    print(f"❌ Error reading {file_path}: {e}")
+
+            else: 
+                print(f"⚠️ skipped argument: {item}")
     else:
         print(f"⚠️ No Field to update")
     # json_body = json.dumps(update_dict)
@@ -279,7 +340,7 @@ def updateField(sighting_id,  args ):
     
     url = f'https://hsdes-api.intel.com/rest/article/{sighting_id}?fetch=false&debug=false'
 
-    data = updateField_Parse(args.updateField)
+    data = updateField_Parse_with_Excel(sighting_id, args.updateField)
     print(data)
     response = requests.put(url, verify='C:/Python313/Lib/site-packages/certifi/cacert.pem', auth=HTTPKerberosAuth(), headers=headers, json=data) 
     if response.status_code == 200:
@@ -465,6 +526,7 @@ def main():
         if command_arg and os.path.isfile(command_arg) :
             with open(command_arg, "r", encoding="utf-8") as f:
                 return f.read()
+        print(f"read file done!")
         return command_arg or ""
 
     if args.toWiki:
