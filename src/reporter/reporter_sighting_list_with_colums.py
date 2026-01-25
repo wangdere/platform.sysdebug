@@ -26,7 +26,7 @@ class ReporterSightingListWithColumns(BaseReporter):
         print("reporter: sighting list with columns to run")
 
         # 开多线程跑
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             futures = [executor.submit(self.process_sighting, s) for s in self.sightings]
 #            for future in as_completed(futures):
 #                result_table.append(future.result())
@@ -67,7 +67,22 @@ class ReporterSightingListWithColumns(BaseReporter):
             suspect_area = o_hsd_conn.get_sighting_field_value("suspect_area")
             days_no_comment = o_hsd_conn.get_days_no_comment()
             report_type = o_hsd_conn.get_sighting_field_value("report_type")
-            trans_team_found,trans_conclusion, trans_status, trans_tenant, refined_ingredient  = o_hsd_conn.get_refined_ingredient()
+            trans_team_found,trans_conclusion, trans_status, trans_tenant, refined_ingredient , trans_priority = o_hsd_conn.get_refined_ingredient()
+
+            if (report_type == "sighting" ):
+                sighting_submitted_date = o_hsd_conn.get_sighting_field_value("sighting_submitted_date")  #this must exist
+                sighting_transferred_date = o_hsd_conn.get_sighting_field_value("transferred_date")  #may be null
+                sighting_root_caused_date = o_hsd_conn.get_sighting_field_value("root_caused_date")  #may be null
+                #sighting_implemented_date = o_hsd_conn.get_sighting_field_value("implemented_date")  #may be null
+                sighting_closed_date = o_hsd_conn.get_sighting_field_value("closed_date")  #may be null
+ 
+                time_to_transferred_days = self.calc_days_to_submitted_date(sighting_submitted_date,sighting_transferred_date )
+                time_to_root_caused_days = self.calc_days_to_submitted_date(sighting_submitted_date,sighting_root_caused_date )
+                #time_to_implemented_days = self.calc_days_to_submitted_date(sighting_submitted_date,sighting_implemented_date )
+                time_to_closed_days=self.calc_days_to_submitted_date(sighting_submitted_date,sighting_closed_date )
+            else:
+                time_to_closed_days = 0
+            
             warning_msg = ""
             warrning_count = 0
 
@@ -101,8 +116,8 @@ class ReporterSightingListWithColumns(BaseReporter):
                     "forum": forum,
                     "exposure": exposure,
                     "status": status,
-                    "status_reason": status_reason.replace(".", "_\u200B"),
-                    "suspect_area".replace("_", "_\u200B"): suspect_area,
+                    "status_reason": status_reason.replace(".", ".\u200B"),
+                    "suspect_area": suspect_area.replace(".", ".\u200B"),
                     "report_type": report_type,
                     "days_no_substantial_update".replace("_", "_\u200B"): days_no_comment,
                     "warning": warning_msg,
@@ -110,7 +125,11 @@ class ReporterSightingListWithColumns(BaseReporter):
                     "trans_status": trans_status,
                     "trans_team_found": trans_team_found,
                     "refined_ingredient": refined_ingredient,
-                    "trans_conclusion": trans_conclusion
+                    "trans_conclusion": trans_conclusion,
+                    "trans_priority": trans_priority,
+                    "time_to_transferred_days": time_to_transferred_days,
+                    "time_to_root_caused_days": time_to_root_caused_days,
+                    "time_to_closed_days": time_to_closed_days
 
                 })
     
@@ -150,3 +169,20 @@ class ReporterSightingListWithColumns(BaseReporter):
         # how to judget the suspect area and bugeco has the same code? 
         return  result, msg 
         #Then to check if sighting_central in the sets or not. 
+
+
+    def calc_days_to_submitted_date(self,start_str, end_str):
+        print (f" start : {start_str}, end: {end_str}")
+        if not start_str or not end_str:
+            return None
+        
+        fmt = "%Y-%m-%d %H:%M:%S.%f"
+        start = datetime.strptime(start_str, fmt)
+        end = datetime.strptime(end_str, fmt)
+
+        #return (end - start).total_seconds() / 86400
+        
+        days = (end - start).days
+        if days < 0 : 
+            return None
+        return days

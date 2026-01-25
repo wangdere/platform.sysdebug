@@ -602,6 +602,7 @@ def sighting_read_out_from_working_book(sighting_id, field):
         "server_platf.bug.sysdbg_notes2": "sysdbg_notes2",
         "server_platf.bug.sysdbg_notes3": "sysdbg_notes3",
         "server_platf.bug.sysdbg_notes4": "sysdbg_notes4",
+        "server_platf.bug.help_required": "help_required"
     }
     EXCEL_URL = "https://intel.sharepoint.com/sites/eaglestreamplatformsysdebug/Shared%20Documents/OKS%20DMR%20Sysdebug/DMR_Sysdebug_working_sheet.xlsm?web=1"
     TARGET_SHEET = "Updating"

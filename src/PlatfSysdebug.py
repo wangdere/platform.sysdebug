@@ -270,16 +270,23 @@ def updateField_Parse_with_Excel(sighting_id, field_list):
                             "server_platf.bug.sysdbg_notes1",
                             "server_platf.bug.sysdbg_notes2",
                             "server_platf.bug.sysdbg_notes3",
-                            "server_platf.bug.sysdbg_notes4" ] :
+                            "server_platf.bug.sysdbg_notes4",
+                            "server_platf.bug.help_required"] :
                     value_from_excel = su.sighting_read_out_from_working_book(sighting_id, item)
                     if value_from_excel:
                         update_dict["fieldValues"].append({item: value_from_excel})
                     else:
                         print(f"⚠️ not get the content from excel for {item}, skipped.")
+                    
+                    # these areas will be maintained by system debugger, will not notify.
+                    update_dict["fieldValues"].append({"send_mail": "false"})
             else: 
                 print(f"⚠️ skipped argument: {item}")
     else:
         print(f"⚠️ No Field to update")
+
+
+
     # json_body = json.dumps(update_dict)
     return   update_dict
 
@@ -590,12 +597,24 @@ def main():
                 updateSuspectAreaIngredient(sighting_id,  args )
 
     if args.updateField:
-        if not len(args.id):
+        if not args.id:
             print("❌ Please provide at least one ID --id.Empty values are not allowed. Can't perfrom: " + "update suspect area" )    
         else:
             print("To update the fileds\n")
             for sighting_id in  args.id:
                 updateField(sighting_id,  args )
+
+        if not args.queryId : 
+            print("⚠️ queyrID is empty, skip" )    
+
+        else:
+            sighting_list = create_sighting_list([], args.queryId )
+            print("To update the fileds\n")
+            for sighting_id in  sighting_list:
+                updateField(sighting_id,  args )
+
+
+
 
     # 其他参数的处理逻辑可以在这里添加
     # if args.updateRelease:

@@ -8,6 +8,7 @@ from typing import Tuple
 from typing import List
 dmr_starting_week = "2025ww34"
 
+'''
 def parse_workweek_to_date(re, ww_str: str) -> datetime:
     """
     把 w38 / ww38 / w38.1 / ww38.2 转换成 datetime。
@@ -29,6 +30,51 @@ def parse_workweek_to_date(re, ww_str: str) -> datetime:
     weekday = day % 7    # .0 → 周日，.1 → 周一 ... +1 is for intel calendar
     date_str = f"{year} {week} {weekday}"
     return datetime.strptime(date_str, "%Y %W %w")         
+'''
+
+def parse_workweek_to_date(re, ww_str: str, base_date=None) -> datetime:
+    """
+    把 w38 / ww38 / w38.1 / ww38.2 转换成 datetime
+    自动推断年份（选择最接近当前时间的）
+    """
+    if base_date is None:
+        base_date = datetime.now()
+
+    ww_str = ww_str.lower()
+
+    # 补全格式，比如 w38 → w38.0
+    print(f"caputured scrub_notes{ww_str}")
+    if re.fullmatch(r"w{1,2}\d{2}", ww_str):
+        ww_str += ".0"
+
+    match = re.match(r"w{1,2}(\d{2})\.(\d)", ww_str)
+    if not match:
+        return None
+
+    week, day = int(match.group(1)), int(match.group(2))
+    week -= 1  # Intel calendar
+
+    candidates = []
+    for y in (base_date.year - 1, base_date.year, base_date.year + 1):
+        try:
+            d = ww_to_date_for_year(y, week, day)
+            candidates.append(d)
+        except ValueError:
+            pass
+
+    # 选离现在最近的
+    return min(candidates, key=lambda d: abs(d - base_date))
+
+def ww_to_date_for_year(year, week, day):
+    """
+    Intel calendar:
+    week: already -1 adjusted
+    day: 0=Sun, 1=Mon...
+    """
+    weekday = day % 7
+    date_str = f"{year} {week} {weekday}"
+    return datetime.strptime(date_str, "%Y %W %w")
+
 
 def date_to_workweek( dt_str ):
 
