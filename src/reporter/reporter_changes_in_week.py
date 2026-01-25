@@ -78,6 +78,8 @@ class ReporterChangesInWeek(BaseReporter):
                 })
 
         # Table2: Closed
+        closed_date = o_hsd_conn.get_sighting_field_value("closed_date")
+        print (f" sighting {s} got closed date {closed_date}")
         if in_week(o_hsd_conn.get_sighting_field_value("closed_date")):
             self.table2_closed_list.append({
                 "forum": forum,

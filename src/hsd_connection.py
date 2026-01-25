@@ -34,7 +34,7 @@ class HSDConnection:
         prefix = "server_platf.bug."
         if field in ("suspect_area", "ingredient","days_open",  "sighting_submitted_date", "root_caused_date", "transferred_date", "regression","days_sighting_submitted",
                     "days_lastupdate", "days_to_root_caused","days_sighting_submitted", "transferred_id", "root_cause_detail", "scrub_notes","ingredient","root_cause_detail",
-                    "sighting_submitted_date"):
+                    ):
             full_key = prefix + field 
         elif field in ("exposure", "forum", "implemented_date", "report_type"):
             full_key = prefix[len('server_platf.'):] + field 
@@ -288,42 +288,44 @@ class HSDConnection:
         local_tenant =  "server_platf"
         local_status = self.get_sighting_field_value("status")
         local_team_found = self.get_sighting_field_value("bug.team_found")
+        local_priority =""
         
 
 
         if transferred_id == "" : 
-           return  local_team_found , "", local_status, local_tenant, local_ingredient
+           return  local_team_found , "", local_status, "" , local_ingredient,local_priority  # local_tenant will be "" , not to put "server_platf" as transferred tenant
 
         elif any(keyword.lower() in transferred_id.lower() for keyword in ["bmc", "board", "jira", "github", "pfr", "cpld" ]):
-           return  local_team_found, "", local_status, local_tenant, local_ingredient
-
+           return  local_team_found, "", local_status, "", local_ingredient, local_priority   # local_tenant will be "" , not to put "server_platf" as transferred tenant
+  
         print(f"To check the {transferred_id} 's component as ingredient")
         try:
             o_hsd_conn = HSDConnection()  # 通常先构造再 fetch
             o_hsd_conn.fetch_data(
                 sighting_id=transferred_id,
-                sighting_field_list=["tenant", "component", "status", "sighting.team_found", "sighting.conclusion"]
+                sighting_field_list=["tenant", "component", "status", "sighting.team_found", "sighting.conclusion", "priority"]
             )
         except Exception as e:
             # fetch 失败时，回退到默认
             print(f"Warning: failed to fetch sighting {transferred_id}: {e}")
-            return local_team_found, "",local_status, local_tenant, local_ingredient
+            return local_team_found, "",local_status, local_tenant, local_ingredient,local_priority
 
         trans_tenant = o_hsd_conn.get_sighting_field_value("tenant")
         refined_ingredient = o_hsd_conn.get_sighting_field_value("component")
         trans_team_found = o_hsd_conn.get_sighting_field_value("sighting.team_found")
         trans_conclusion = o_hsd_conn.get_sighting_field_value("sighting.conclusion")
         trans_status = o_hsd_conn.get_sighting_field_value("status")
+        trans_priority = o_hsd_conn.get_sighting_field_value("priority")
 
         if trans_tenant in ["sighting_central"]: 
             if any(keyword.lower() in refined_ingredient.lower() for keyword in ["ifwi", "bios"]):  
-                return trans_team_found,trans_conclusion, trans_status, trans_tenant, local_ingredient
+                return trans_team_found,trans_conclusion, trans_status, trans_tenant, local_ingredient,trans_priority
             else:   
-                return trans_team_found,trans_conclusion, trans_status, trans_tenant, refined_ingredient    
+                return trans_team_found,trans_conclusion, trans_status, trans_tenant, refined_ingredient,trans_priority
         elif trans_tenant in ["central_firmware", "server_platf_ae"]: 
-            return trans_team_found,trans_conclusion,  trans_status, trans_tenant, refined_ingredient    
+            return trans_team_found,trans_conclusion,  trans_status, trans_tenant, refined_ingredient,trans_priority
         else:
-            return trans_team_found,trans_conclusion, trans_status,  trans_tenant or "server_platf", local_ingredient
+            return trans_team_found,trans_conclusion, trans_status,  trans_tenant or "", local_ingredient,trans_priority
     
         
 
